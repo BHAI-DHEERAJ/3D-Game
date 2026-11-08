@@ -192,6 +192,15 @@ public class MainActivity extends Activity {
         }
 
         if (back != null) {
+            TextView helpBtn = new TextView(this);
+            helpBtn.setText("❓");
+            helpBtn.setTextSize(16f);
+            helpBtn.setGravity(Gravity.CENTER);
+            helpBtn.setPadding(dp(8), dp(4), dp(8), dp(4));
+            helpBtn.setClickable(true);
+            helpBtn.setOnClickListener(v -> helpDialog());
+            bar.addView(helpBtn);
+
             TextView playBtn = new TextView(this);
             playBtn.setText("▶️");
             playBtn.setTextSize(16f);
@@ -563,9 +572,11 @@ public class MainActivity extends Activity {
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
 
-        // ---------- preview (left) + tools (right)
+        // ---------- left column: preview on top, timeline under it; tools rail on the right
         LinearLayout mid = new LinearLayout(this);
         mid.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout left = new LinearLayout(this);
+        left.setOrientation(LinearLayout.VERTICAL);
 
         FrameLayout previewBox = new FrameLayout(this);
         GradientDrawable pb = new GradientDrawable();
@@ -585,8 +596,9 @@ public class MainActivity extends Activity {
         otLp.setMargins(dp(6), dp(6), dp(6), dp(6));
         previewBox.addView(overlayTools, otLp);
 
-        mid.addView(previewBox, new LinearLayout.LayoutParams(0, MATCH, 1f));
-        mid.addView(buildToolsColumn(), new LinearLayout.LayoutParams(dp(152), MATCH));
+        left.addView(previewBox, new LinearLayout.LayoutParams(MATCH, 0, 1f));
+        mid.addView(left, new LinearLayout.LayoutParams(0, MATCH, 1f));
+        mid.addView(buildToolsColumn(), new LinearLayout.LayoutParams(dp(168), MATCH));
         panel.addView(mid, new LinearLayout.LayoutParams(MATCH, 0, 1f));
 
         // ---------- timeline
@@ -625,7 +637,7 @@ public class MainActivity extends Activity {
                 renderAt(timeMs);
             }
         });
-        panel.addView(timeline, new LinearLayout.LayoutParams(MATCH, dp(86)));
+        left.addView(timeline, new LinearLayout.LayoutParams(MATCH, dp(86)));
         return panel;
     }
 
@@ -634,37 +646,40 @@ public class MainActivity extends Activity {
         scroll.setVerticalScrollBarEnabled(false);
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
-        col.setPadding(dp(5), 0, 0, dp(6));
+        col.setPadding(dp(4), 0, 0, dp(2));
 
         addToolRow(col, tool("➕", t("Media", "मीडिया"), false, v -> pickMedia()),
-                tool("🔤", t("Text", "लिखें"), false, v -> addText()));
-        addToolRow(col, tool("😊", t("Sticker", "स्टिकर"), false, v -> addSticker()),
-                tool("🎵", t("Music", "संगीत"), false, v -> audioDialog()));
-        addToolRow(col, tool("✨", t("Effect", "इफ़ेक्ट"), false, v -> transitionDialog()),
+                tool("🔤", t("Text", "लिखें"), false, v -> addText()),
+                tool("😊", t("Sticker", "स्टिकर"), false, v -> addSticker()));
+
+        addToolRow(col, tool("🎵", t("Music", "संगीत"), false, v -> audioDialog()),
+                tool("✨", t("Effect", "इफ़ेक्ट"), false, v -> transitionDialog()),
                 tool("🎨", t("Look", "रंग"), false, v -> filterDialog()));
+
         addToolRow(col, tool("📐", t("Size", "साइज़"), false, v -> videoSizeDialog()),
-                tool("⏩", t("Speed", "गति"), false, v -> speedDialog()));
+                tool("⏩", t("Speed", "गति"), false, v -> speedDialog()),
+                tool("✂️", t("Split", "काटें"), false, v -> splitAtPlayhead()));
+
         speedLabel = tool("⏱️", "3s", false, v -> changeDuration());
-        addToolRow(col, tool("✂️", t("Split", "काटें"), false, v -> splitAtPlayhead()), speedLabel);
-        addToolRow(col, tool("🔀", t("Copy", "कॉपी"), false, v -> duplicateClip()),
+        addToolRow(col, speedLabel,
+                tool("🔀", t("Copy", "कॉपी"), false, v -> duplicateClip()),
                 tool("🔊", t("Sound", "आवाज़"), false, v -> audioDialog()));
+
         addToolRow(col, tool("⬅️", t("Left", "पीछे"), false, v -> move(-1)),
-                tool("➡️", t("Right", "आगे"), false, v -> move(1)));
-        addToolRow(col, tool("🗑️", t("Remove", "हटाएं"), true, v -> removeClip()),
-                tool("❓", t("Help", "मदद"), false, v -> helpDialog()));
+                tool("➡️", t("Right", "आगे"), false, v -> move(1)),
+                tool("🗑️", t("Remove", "हटाएं"), true, v -> removeClip()));
 
         scroll.addView(col);
         return scroll;
     }
 
-    private void addToolRow(LinearLayout col, View a, View b) {
+    private void addToolRow(LinearLayout col, View... tiles) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
-        if (a != null) {
-            row.addView(a);
-        }
-        if (b != null) {
-            row.addView(b);
+        for (View tile : tiles) {
+            if (tile != null) {
+                row.addView(tile);
+            }
         }
         col.addView(row, new LinearLayout.LayoutParams(MATCH, WRAP));
     }
@@ -676,7 +691,7 @@ public class MainActivity extends Activity {
         bg.setColor(0xD9000000);
         bg.setCornerRadius(dp(12));
         box.setBackground(bg);
-        box.setPadding(dp(6), dp(4), dp(6), dp(2));
+        box.setPadding(dp(4), dp(2), dp(4), dp(0));
 
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -788,15 +803,15 @@ public class MainActivity extends Activity {
     private TextView tool(String emoji, String label, boolean danger, View.OnClickListener click) {
         TextView tv = new TextView(this);
         tv.setText(emoji + "\n" + label);
-        tv.setTextSize(11.5f);
+        tv.setTextSize(10.5f);
         tv.setTypeface(Typeface.DEFAULT_BOLD);
         tv.setTextColor(danger ? 0xFFB32222 : INK);
         tv.setGravity(Gravity.CENTER);
         tv.setBackground(round(CARD, 14, danger ? 0xFFF3CFC7 : LINE));
         tv.setClickable(true);
         tv.setOnClickListener(click);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(56), 1f);
-        lp.setMargins(dp(2), dp(3), dp(2), dp(3));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(46), 1f);
+        lp.setMargins(dp(2), dp(2), dp(2), dp(2));
         tv.setLayoutParams(lp);
         return tv;
     }

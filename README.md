@@ -33,11 +33,15 @@ Movies are saved to **Gallery → Movies → SimpleVideoMaker**; the result scre
 * **Rename**, **Duplicate**, **Delete** (long-press a draft) — photos always stay safe in the gallery.
 * Media access is remembered (`ACTION_OPEN_DOCUMENT` + persistable URIs), so drafts survive reboots.
 
+![the landscape editor](docs/editor.png)
+
 ### 🎞️ The timeline (real one)
 * A **scrubber bar with a time ruler** (0:00 · 0:05 · 0:10 …) under the preview.
 * Every clip is a **block with its own filmstrip** — drag the orange **playhead** anywhere to jump,
   **pinch with two fingers** to zoom 1×–10×, tap a block to select that clip.
 * A thin **audio lane** under the blocks shows the music and a ♪ / 🔇 badge per clip.
+* Landscape layout: **preview top-left, timeline underneath, tool rail on the right** — every tool is
+  one tap away, nothing is hidden behind a menu.
 * The preview follows the playhead frame by frame (the real decoded video frame, not a thumbnail).
 
 ### ✂️ The editor
