@@ -1,6 +1,7 @@
 package com.simplevideomaker.app;
 
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.RectF;
 import android.view.MotionEvent;
@@ -14,6 +15,7 @@ public class EditorView extends View {
     }
 
     private Clip clip;
+    private Bitmap frame;
     private Overlay selected;
     private Listener listener;
 
@@ -40,6 +42,14 @@ public class EditorView extends View {
 
     public void setClip(Clip c) {
         this.clip = c;
+        this.frame = null;
+        invalidate();
+    }
+
+    /** Shows a specific decoded frame (used while scrubbing the timeline). */
+    public void setFrame(Clip c, Bitmap b) {
+        this.clip = c;
+        this.frame = b;
         invalidate();
     }
 
@@ -66,7 +76,9 @@ public class EditorView extends View {
         canvas.save();
         canvas.translate(dx, dy);
         canvas.scale(scale, scale);
-        FrameRenderer.drawFrame(canvas, clip, clip == null ? null : clip.image, 1f, selected);
+        Bitmap media = frame != null && !frame.isRecycled()
+                ? frame : (clip == null ? null : clip.image);
+        FrameRenderer.drawFrame(canvas, clip, media, 1f, selected);
         canvas.restore();
     }
 

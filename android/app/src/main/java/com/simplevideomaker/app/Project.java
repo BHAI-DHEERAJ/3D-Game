@@ -21,13 +21,16 @@ public class Project {
     public String musicUriString = "";
     public float musicVolume = 0.7f;
 
+    /** Turn the original sound of every clip off (music only). */
+    public boolean clipsMuted = false;
+
     /** Small JPEG preview of the first clip, base64 — shown on the drafts screen. */
     public String thumb;
 
     /** Output size and quality of the finished movie. */
-    public int outWidth = 720;
-    public int outHeight = 1280;
-    public int bitrate = 6_000_000;
+    public int outWidth = 1920;
+    public int outHeight = 1080;
+    public int bitrate = 8_000_000;
 
     public Project() {
         this.id = ProjectStore.newId();
@@ -71,6 +74,7 @@ public class Project {
         o.put("updated", updatedAt);
         o.put("music", musicUriString);
         o.put("musicVol", musicVolume);
+        o.put("muted", clipsMuted);
         o.put("w", outWidth);
         o.put("h", outHeight);
         o.put("br", bitrate);
@@ -93,9 +97,10 @@ public class Project {
         p.musicUriString = o.optString("music", "");
         p.musicUri = p.musicUriString.isEmpty() ? null : Uri.parse(p.musicUriString);
         p.musicVolume = (float) o.optDouble("musicVol", 0.7);
-        p.outWidth = o.optInt("w", 720);
-        p.outHeight = o.optInt("h", 1280);
-        p.bitrate = o.optInt("br", 6000000);
+        p.clipsMuted = o.optBoolean("muted", false);
+        p.outWidth = o.optInt("w", 1920);
+        p.outHeight = o.optInt("h", 1080);
+        p.bitrate = o.optInt("br", 8000000);
         p.thumb = o.optString("thumb", null);
         JSONArray arr = o.optJSONArray("clips");
         if (arr != null) {

@@ -78,7 +78,8 @@ public final class AudioMixer {
         long offsetUs = 0;
         for (Clip c : project.clips) {
             long clipUs = Math.max(200, c.durationMs) * 1000L;
-            if (c.isVideo() && c.volume > 0.01f && Math.abs(c.speed - 1f) < 0.01f) {
+            if (!project.clipsMuted && c.isVideo() && c.volume > 0.01f
+                    && Math.abs(c.speed - 1f) < 0.01f) {
                 segments.add(new Segment(offsetUs, offsetUs + clipUs, c.uri, c.startMs,
                         c.sourceEndMs(), c.volume));
             }

@@ -78,8 +78,11 @@ public class MainActivity extends Activity {
     private View emptyPanel;
     private LinearLayout editorPanel;
     private EditorView preview;
-    private LinearLayout timelineRow;
-    private LinearLayout moreRow;
+    private TimelineView timeline;
+    private long playheadMs;
+    private int frameToken;
+    private Scrubber scrubber;
+    private final android.os.Handler scrubHandler = new android.os.Handler(android.os.Looper.getMainLooper());
     private LinearLayout overlayTools;
     private TextView speedLabel;
     private TextView nameLabel;
@@ -275,7 +278,7 @@ public class MainActivity extends Activity {
             empty.setGravity(Gravity.CENTER);
             empty.setPadding(dp(8), dp(40), dp(8), dp(20));
             TextView hero = new TextView(this);
-            hero.setText("👵🎬");
+            hero.setText("🎬");
             hero.setTextSize(52f);
             hero.setGravity(Gravity.CENTER);
             empty.addView(hero);
@@ -509,7 +512,7 @@ public class MainActivity extends Activity {
         box.setPadding(dp(8), dp(8), dp(8), dp(20));
 
         TextView hero = new TextView(this);
-        hero.setText("👵🎬");
+        hero.setText("🎬");
         hero.setTextSize(52f);
         hero.setGravity(Gravity.CENTER);
         box.addView(hero);
@@ -530,93 +533,148 @@ public class MainActivity extends Activity {
     }
 
     private LinearLayout buildEditorPanel() {
+        if (scrubber == null) {
+            scrubber = new Scrubber(this);
+        }
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
 
+        // ---------- preview (left) + tools (right)
+        LinearLayout mid = new LinearLayout(this);
+        mid.setOrientation(LinearLayout.HORIZONTAL);
+
         FrameLayout previewBox = new FrameLayout(this);
         GradientDrawable pb = new GradientDrawable();
-        pb.setColor(0xFF1B1512);
-        pb.setCornerRadius(dp(18));
+        pb.setColor(0xFF120E0C);
+        pb.setCornerRadius(dp(14));
         previewBox.setBackground(pb);
+
         preview = new EditorView(this);
         preview.setListener(o -> {
             selOverlay = o;
             updateOverlayTools();
         });
         previewBox.addView(preview, new FrameLayout.LayoutParams(MATCH, MATCH));
-        panel.addView(previewBox, new LinearLayout.LayoutParams(MATCH, 0, 1f));
 
-        HorizontalScrollView scroll = new HorizontalScrollView(this);
-        scroll.setHorizontalScrollBarEnabled(false);
-        scroll.setLayoutParams(new LinearLayout.LayoutParams(MATCH, dp(84)));
-        timelineRow = new LinearLayout(this);
-        timelineRow.setOrientation(LinearLayout.HORIZONTAL);
-        scroll.addView(timelineRow, new HorizontalScrollView.LayoutParams(WRAP, MATCH));
-        panel.addView(scroll);
+        overlayTools = buildOverlayTools();
+        FrameLayout.LayoutParams otLp = new FrameLayout.LayoutParams(MATCH, WRAP, Gravity.BOTTOM);
+        otLp.setMargins(dp(6), dp(6), dp(6), dp(6));
+        previewBox.addView(overlayTools, otLp);
 
-        LinearLayout toolsA = new LinearLayout(this);
-        toolsA.setOrientation(LinearLayout.HORIZONTAL);
-        toolsA.addView(tool("🔤", t("Text", "लिखें"), false, v -> addText()));
-        toolsA.addView(tool("😊", t("Sticker", "स्टिकर"), false, v -> addSticker()));
-        toolsA.addView(tool("🎵", t("Music", "संगीत"), false, v -> musicDialog()));
-        toolsA.addView(tool("✨", t("Effect", "इफ़ेक्ट"), false, v -> transitionDialog()));
-        toolsA.addView(tool("🎨", t("Look", "रंग"), false, v -> filterDialog()));
-        toolsA.addView(tool("⋯", t("More", "और"), false, v -> {
-            moreTools = !moreTools;
-            moreRow.setVisibility(moreTools ? View.VISIBLE : View.GONE);
-        }));
-        panel.addView(toolsA);
+        mid.addView(previewBox, new LinearLayout.LayoutParams(0, MATCH, 1f));
+        mid.addView(buildToolsColumn(), new LinearLayout.LayoutParams(dp(170), MATCH));
+        panel.addView(mid, new LinearLayout.LayoutParams(MATCH, 0, 1f));
 
-        moreRow = new LinearLayout(this);
-        moreRow.setOrientation(LinearLayout.VERTICAL);
-        moreRow.setVisibility(View.GONE);
+        // ---------- timeline
+        timeline = new TimelineView(this);
+        timeline.setListener(new TimelineView.Listener() {
+            @Override
+            public void onSeek(long timeMs) {
+                playheadMs = timeMs;
+                int index = clipIndexAt(timeMs);
+                if (index >= 0 && index != sel && !busy) {
+                    sel = index;
+                    selOverlay = null;
+                    timeline.setSelected(index);
+                    speedLabel.setText("⏱️\n" + Project.seconds(current() == null
+                            ? 0 : current().durationMs));
+                    preview.setSelected(null);
+                    updateOverlayTools();
+                }
+                scheduleFrame(timeMs);
+            }
 
-        LinearLayout toolsB = new LinearLayout(this);
-        toolsB.setOrientation(LinearLayout.HORIZONTAL);
-        toolsB.addView(tool("⏩", t("Speed", "गति"), false, v -> speedDialog()));
-        toolsB.addView(tool("✂️", t("Split", "काटें"), false, v -> splitClip()));
+            @Override
+            public void onSelectClip(int index) {
+                if (busy) {
+                    return;
+                }
+                sel = index;
+                selOverlay = null;
+                updateSpeedLabel();
+                updateOverlayTools();
+                preview.setSelected(null);
+            }
+
+            @Override
+            public void onScrubEnd(long timeMs) {
+                renderAt(timeMs);
+            }
+        });
+        panel.addView(timeline, new LinearLayout.LayoutParams(MATCH, dp(94)));
+        return panel;
+    }
+
+    private View buildToolsColumn() {
+        ScrollView scroll = new ScrollView(this);
+        scroll.setVerticalScrollBarEnabled(false);
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setPadding(dp(5), 0, 0, 0);
+
+        addToolRow(col, tool("🔤", t("Text", "लिखें"), false, v -> addText()),
+                tool("😊", t("Sticker", "स्टिकर"), false, v -> addSticker()));
+        addToolRow(col, tool("🎵", t("Music", "संगीत"), false, v -> audioDialog()),
+                tool("✨", t("Effect", "इफ़ेक्ट"), false, v -> transitionDialog()));
+        addToolRow(col, tool("🎨", t("Look", "रंग"), false, v -> filterDialog()),
+                tool("📐", t("Size", "साइज़"), false, v -> videoSizeDialog()));
+        addToolRow(col, tool("⏩", t("Speed", "गति"), false, v -> speedDialog()),
+                tool("✂️", t("Split", "काटें"), false, v -> splitAtPlayhead()));
         speedLabel = tool("⏱️", "3s", false, v -> changeDuration());
-        toolsB.addView(speedLabel);
-        toolsB.addView(tool("⬅️", t("Left", "पीछे"), false, v -> move(-1)));
-        toolsB.addView(tool("➡️", t("Right", "आगे"), false, v -> move(1)));
-        toolsB.addView(tool("🔀", t("Copy", "कॉपी"), false, v -> duplicateClip()));
-        moreRow.addView(toolsB);
-
-        LinearLayout toolsC = new LinearLayout(this);
-        toolsC.setOrientation(LinearLayout.HORIZONTAL);
-        toolsC.addView(tool("🔊", t("Sound", "आवाज़"), false, v -> toggleSound()));
-        toolsC.addView(tool("🗑️", t("Remove", "हटाएं"), true, v -> removeClip()));
-        toolsC.addView(tool("📐", t("Size", "साइज़"), false, v -> videoSizeDialog()));
-        toolsC.addView(tool("✔️", t("Save", "सेव"), false, v -> {
+        addToolRow(col, speedLabel, tool("🔀", t("Copy", "कॉपी"), false, v -> duplicateClip()));
+        addToolRow(col, tool("🔊", t("Sound", "आवाज़"), false, v -> audioDialog()),
+                tool("⬅️", t("Left", "पीछे"), false, v -> move(-1)));
+        addToolRow(col, tool("➡️", t("Right", "आगे"), false, v -> move(1)),
+                tool("🗑️", t("Remove", "हटाएं"), true, v -> removeClip()));
+        addToolRow(col, tool("💾", t("Save", "सेव"), false, v -> {
             saveCurrent();
             toast(t("Draft saved ✔️", "ड्राफ्ट सेव हो गया ✔️"));
-        }));
-        moreRow.addView(toolsC);
-        panel.addView(moreRow);
+        }), tool("❓", t("Help", "मदद"), false, v -> helpDialog()));
 
-        overlayTools = new LinearLayout(this);
-        overlayTools.setOrientation(LinearLayout.VERTICAL);
+        scroll.addView(col);
+        return scroll;
+    }
 
-        LinearLayout overlayButtons = new LinearLayout(this);
-        overlayButtons.setOrientation(LinearLayout.HORIZONTAL);
-        overlayButtons.addView(tool("➕", t("Bigger", "बड़ा"), false, v -> resize(1.18f)));
-        overlayButtons.addView(tool("➖", t("Smaller", "छोटा"), false, v -> resize(1f / 1.18f)));
-        overlayButtons.addView(tool("✨", t("Glow", "चमक"), false, v -> toggleGlow()));
-        overlayButtons.addView(tool("🗑️", t("Remove", "हटाएं"), true, v -> removeOverlay()));
-        overlayButtons.addView(tool("✔️", t("Done", "ठीक है"), false, v -> {
+    private void addToolRow(LinearLayout col, View a, View b) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        if (a != null) {
+            row.addView(a);
+        }
+        if (b != null) {
+            row.addView(b);
+        }
+        col.addView(row, new LinearLayout.LayoutParams(MATCH, WRAP));
+    }
+
+    private LinearLayout buildOverlayTools() {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(0xD9000000);
+        bg.setCornerRadius(dp(12));
+        box.setBackground(bg);
+        box.setPadding(dp(6), dp(4), dp(6), dp(2));
+
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.addView(smallTool("➕", v -> resize(1.18f)));
+        row.addView(smallTool("➖", v -> resize(1f / 1.18f)));
+        row.addView(smallTool("✨", v -> toggleGlow()));
+        row.addView(smallTool("🗑️", v -> removeOverlay()));
+        row.addView(smallTool("✔️", v -> {
             selOverlay = null;
             updateOverlayTools();
         }));
-        overlayTools.addView(overlayButtons);
+        box.addView(row);
 
         LinearLayout sizeRow = new LinearLayout(this);
         sizeRow.setOrientation(LinearLayout.HORIZONTAL);
         sizeRow.setGravity(Gravity.CENTER_VERTICAL);
-        sizeRow.setPadding(dp(8), dp(2), dp(8), dp(4));
 
         TextView small = new TextView(this);
         small.setText("🔍");
-        small.setTextSize(13f);
+        small.setTextSize(11f);
         sizeRow.addView(small);
 
         sizeSeek = new SeekBar(this);
@@ -640,18 +698,30 @@ public class MainActivity extends Activity {
                 saveCurrent();
             }
         });
-        LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(0, WRAP, 1f);
-        sizeRow.addView(sizeSeek, slp);
+        sizeRow.addView(sizeSeek, new LinearLayout.LayoutParams(0, WRAP, 1f));
 
         TextView big = new TextView(this);
         big.setText("🔍");
-        big.setTextSize(20f);
+        big.setTextSize(16f);
         sizeRow.addView(big);
 
-        overlayTools.addView(sizeRow);
-        overlayTools.setVisibility(View.GONE);
-        panel.addView(overlayTools);
-        return panel;
+        box.addView(sizeRow);
+        box.setVisibility(View.GONE);
+        return box;
+    }
+
+    private TextView smallTool(String emoji, View.OnClickListener click) {
+        TextView tv = new TextView(this);
+        tv.setText(emoji);
+        tv.setTextSize(15f);
+        tv.setGravity(Gravity.CENTER);
+        tv.setBackground(round(0x33FFFFFF, 10, 0));
+        tv.setClickable(true);
+        tv.setOnClickListener(click);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(32), 1f);
+        lp.setMargins(dp(2), dp(2), dp(2), dp(2));
+        tv.setLayoutParams(lp);
+        return tv;
     }
 
     private View buildEditorBar() {
@@ -810,70 +880,82 @@ public class MainActivity extends Activity {
         updateOverlayTools();
         preview.setClip(current());
         preview.setSelected(selOverlay);
+        renderAt(playheadMs);
         if (nameLabel != null) {
             nameLabel.setText(project.name);
         }
     }
 
     private void rebuildTimeline() {
-        timelineRow.removeAllViews();
-        if (project == null) {
+        if (timeline == null) {
             return;
         }
-        for (int i = 0; i < project.clips.size(); i++) {
-            final int index = i;
-            Clip c = project.clips.get(i);
-            FrameLayout item = new FrameLayout(this);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(70), dp(70));
-            lp.setMargins(dp(4), dp(2), dp(4), dp(2));
-            item.setLayoutParams(lp);
-            GradientDrawable bg = new GradientDrawable();
-            bg.setColor(0xFF111111);
-            bg.setCornerRadius(dp(14));
-            if (i == sel) {
-                bg.setStroke(dp(3), ACCENT);
+        if (project != null) {
+            long total = Math.max(1, project.totalMs());
+            if (playheadMs > total) {
+                playheadMs = Math.max(0, total - 1);
             }
-            item.setBackground(bg);
-
-            if (c.thumb != null) {
-                ImageView iv = new ImageView(this);
-                iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                iv.setImageBitmap(c.thumb);
-                item.addView(iv, new FrameLayout.LayoutParams(MATCH, MATCH));
-            }
-
-            LinearLayout tags = new LinearLayout(this);
-            tags.setOrientation(LinearLayout.HORIZONTAL);
-            FrameLayout.LayoutParams tlp = new FrameLayout.LayoutParams(WRAP, WRAP,
-                    Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
-            tlp.setMargins(0, 0, 0, dp(3));
-            TextView badge = new TextView(this);
-            badge.setText((c.isVideo() ? "🎥" : "🖼") + Project.seconds(c.durationMs));
-            badge.setTextSize(10f);
-            badge.setTextColor(Color.WHITE);
-            badge.setBackground(round(0xB3000000, 8, 0));
-            badge.setPadding(dp(4), 0, dp(4), dp(1));
-            tags.addView(badge);
-            if (c.transition != Clip.T_NONE) {
-                TextView tr = new TextView(this);
-                tr.setText("✨");
-                tr.setTextSize(10f);
-                tr.setPadding(dp(3), 0, 0, 0);
-                tags.addView(tr);
-            }
-            item.addView(tags, tlp);
-
-            item.setClickable(true);
-            item.setOnClickListener(v -> {
-                if (busy) {
-                    return;
-                }
-                sel = index;
-                selOverlay = null;
-                refresh();
-            });
-            timelineRow.addView(item);
         }
+        timeline.setProject(project);
+        timeline.setSelected(sel);
+        timeline.setPlayhead(playheadMs);
+    }
+
+    private int clipIndexAt(long timeMs) {
+        if (project == null || project.clips.isEmpty()) {
+            return -1;
+        }
+        long acc = 0;
+        for (int i = 0; i < project.clips.size(); i++) {
+            long d = Math.max(200, project.clips.get(i).durationMs);
+            if (timeMs < acc + d) {
+                return i;
+            }
+            acc += d;
+        }
+        return project.clips.size() - 1;
+    }
+
+    private long localTimeIn(int index, long timeMs) {
+        long acc = 0;
+        for (int i = 0; i < index && i < project.clips.size(); i++) {
+            acc += Math.max(200, project.clips.get(i).durationMs);
+        }
+        long dur = Math.max(200, project.clips.get(index).durationMs);
+        return Math.max(0, Math.min(dur - 1, timeMs - acc));
+    }
+
+    private void scheduleFrame(long timeMs) {
+        scrubHandler.removeCallbacksAndMessages(null);
+        scrubHandler.postDelayed(() -> renderAt(timeMs), 90);
+    }
+
+    /** Draws the frame at the playhead into the preview. */
+    private void renderAt(long timeMs) {
+        if (project == null || project.clips.isEmpty() || preview == null) {
+            return;
+        }
+        int index = clipIndexAt(timeMs);
+        if (index < 0) {
+            return;
+        }
+        Clip clip = project.clips.get(index);
+        long local = localTimeIn(index, timeMs);
+        long sourceUs = (clip.startMs + Math.round(local * clip.speed)) * 1000L;
+        final int token = ++frameToken;
+        if (!clip.isVideo()) {
+            preview.setFrame(clip, clip.image);
+            return;
+        }
+        final Clip target = clip;
+        new Thread(() -> {
+            Bitmap b = scrubber == null ? null : scrubber.frameFor(target, sourceUs);
+            runOnUiThread(() -> {
+                if (token == frameToken) {
+                    preview.setFrame(target, b);
+                }
+            });
+        }).start();
     }
 
     private void updateSpeedLabel() {
@@ -900,7 +982,7 @@ public class MainActivity extends Activity {
         if (project != null) {
             FrameRenderer.setOutputSize(project.outWidth, project.outHeight);
         } else {
-            FrameRenderer.setOutputSize(720, 1280);
+            FrameRenderer.setOutputSize(1920, 1080);
         }
     }
 
@@ -986,32 +1068,43 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void splitClip() {
-        Clip c = current();
-        if (c == null) {
+    private void splitAtPlayhead() {
+        if (project == null || project.clips.isEmpty()) {
+            missingClipsWarning();
             return;
+        }
+        int index = clipIndexAt(playheadMs);
+        if (index < 0) {
+            return;
+        }
+        Clip c = project.clips.get(index);
+        long duration = Math.max(200, c.durationMs);
+        long local = localTimeIn(index, playheadMs);
+        if (local < 250 || local > duration - 250) {
+            local = duration / 2; // playhead at the edges -> cut in the middle
         }
         try {
             long sourceEnd = c.sourceEndMs();
             Clip second = Clip.fromJson(c.toJson());
             second.thumb = c.thumb;
-            long half = Math.max(400, c.durationMs / 2);
             if (c.isVideo()) {
-                long sourceHalf = Math.round(half * c.speed);
-                c.durationMs = half;
-                second.startMs = c.startMs + sourceHalf;
-                second.durationMs = Math.max(400,
+                long sourceCut = Math.round(local * c.speed);
+                c.durationMs = local;
+                second.startMs = c.startMs + sourceCut;
+                second.durationMs = Math.max(200,
                         Math.round((sourceEnd - second.startMs) / c.speed));
                 second.image = null;
             } else {
-                c.durationMs = half;
-                second.durationMs = Math.max(400, c.durationMs);
+                c.durationMs = local;
+                second.durationMs = Math.max(200, duration - local);
                 second.image = c.image;
             }
-            project.clips.add(sel + 1, second);
+            project.clips.add(index + 1, second);
+            sel = index + 1;
+            selOverlay = null;
             refresh();
             saveCurrent();
-            toast(t("Clip split into two ✂️", "क्लिप दो हिस्सों में कट गई ✂️"));
+            toast(t("Cut at the playhead ✂️", "प्लेहेड पर काट दिया ✂️"));
             if (second.image == null) {
                 loadClipAsync(second);
             }
@@ -1242,45 +1335,43 @@ public class MainActivity extends Activity {
         });
     }
 
-    private void musicDialog() {
+    private void audioDialog() {
         if (project == null) {
             return;
         }
-        AlertDialog.Builder b = new AlertDialog.Builder(this);
-        b.setTitle(t("Music", "संगीत"));
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(dp(16), dp(8), dp(16), dp(8));
-
-        TextView current = new TextView(this);
-        current.setText(project.musicUri == null
-                ? t("No music yet", "अभी कोई संगीत नहीं")
-                : t("Music added 🎵", "संगीत जुड़ गया 🎵"));
-        current.setTextSize(16f);
-        current.setTextColor(MUTED);
-        box.addView(current);
-
-        TextView pick = bigButton(t("🎵  Choose music from phone", "🎵  फ़ोन से संगीत चुनें"),
-                CARD, INK);
+        box.setPadding(dp(18), dp(10), dp(18), dp(8));
         final AlertDialog[] holder = new AlertDialog[1];
+
+        // ---- background music
+        TextView musicTitle = new TextView(this);
+        musicTitle.setText(t("Background music", "बैकग्राउंड संगीत"));
+        musicTitle.setTextSize(15f);
+        musicTitle.setTextColor(MUTED);
+        box.addView(musicTitle);
+
+        TextView pick = bigButton(project.musicUri == null
+                        ? t("🎵  Add music from phone", "🎵  फ़ोन से संगीत जोड़ें")
+                        : t("🎵  Change music", "🎵  संगीत बदलें"), CARD, INK);
         pick.setOnClickListener(v -> {
             if (holder[0] != null) {
                 holder[0].dismiss();
             }
             pickMusic();
         });
-        box.addView(pick, spaced(dp(10)));
+        box.addView(pick, spaced(dp(8)));
 
-        TextView volLabel = new TextView(this);
-        volLabel.setText(t("Music volume", "संगीत की आवाज़"));
-        volLabel.setTextSize(15f);
-        volLabel.setTextColor(MUTED);
-        box.addView(volLabel, spaced(dp(14)));
+        TextView musicVolLabel = new TextView(this);
+        musicVolLabel.setText(t("Music volume", "संगीत की आवाज़"));
+        musicVolLabel.setTextSize(14f);
+        musicVolLabel.setTextColor(MUTED);
+        box.addView(musicVolLabel, spaced(dp(10)));
 
-        SeekBar bar = new SeekBar(this);
-        bar.setMax(100);
-        bar.setProgress((int) (project.musicVolume * 100));
-        bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+        SeekBar musicVol = new SeekBar(this);
+        musicVol.setMax(100);
+        musicVol.setProgress((int) (project.musicVolume * 100));
+        musicVol.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 project.musicVolume = Math.max(0.05f, progress / 100f);
@@ -1295,7 +1386,57 @@ public class MainActivity extends Activity {
                 saveCurrent();
             }
         });
-        box.addView(bar);
+        box.addView(musicVol);
+
+        // ---- original sound of the clips
+        TextView clipsTitle = new TextView(this);
+        clipsTitle.setText(t("Sound of your clips", "क्लिप की आवाज़"));
+        clipsTitle.setTextSize(15f);
+        clipsTitle.setTextColor(MUTED);
+        box.addView(clipsTitle, spaced(dp(12)));
+
+        final TextView clipsToggle = bigButton(
+                project.clipsMuted ? t("🔇  Clip sound is OFF", "🔇  क्लिप की आवाज़ बंद")
+                        : t("🔊  Clip sound is ON", "🔊  क्लिप की आवाज़ चालू"), CARD, INK);
+        clipsToggle.setOnClickListener(v -> {
+            project.clipsMuted = !project.clipsMuted;
+            clipsToggle.setText(project.clipsMuted
+                    ? t("🔇  Clip sound is OFF", "🔇  क्लिप की आवाज़ बंद")
+                    : t("🔊  Clip sound is ON", "🔊  क्लिप की आवाज़ चालू"));
+            saveCurrent();
+            rebuildTimeline();
+        });
+        box.addView(clipsToggle, spaced(dp(6)));
+
+        Clip c = current();
+        if (c != null && c.isVideo()) {
+            TextView thisClip = new TextView(this);
+            thisClip.setText(t("Volume of the selected clip", "चुनी हुई क्लिप की आवाज़"));
+            thisClip.setTextSize(14f);
+            thisClip.setTextColor(MUTED);
+            box.addView(thisClip, spaced(dp(10)));
+
+            SeekBar clipVol = new SeekBar(this);
+            clipVol.setMax(100);
+            clipVol.setProgress((int) (c.volume * 100));
+            final Clip selectedClip = c;
+            clipVol.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+                @Override
+                public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                    selectedClip.volume = progress / 100f;
+                }
+
+                @Override
+                public void onStartTrackingTouch(SeekBar seekBar) {
+                }
+
+                @Override
+                public void onStopTrackingTouch(SeekBar seekBar) {
+                    saveCurrent();
+                }
+            });
+            box.addView(clipVol);
+        }
 
         if (project.musicUri != null) {
             TextView remove = bigButton(t("Remove music", "संगीत हटाएं"), CARD, 0xFFB32222);
@@ -1303,17 +1444,20 @@ public class MainActivity extends Activity {
                 project.musicUri = null;
                 project.musicUriString = "";
                 saveCurrent();
+                rebuildTimeline();
                 if (holder[0] != null) {
                     holder[0].dismiss();
                 }
                 toast(t("Music removed", "संगीत हटा दिया"));
             });
-            box.addView(remove, spaced(dp(10)));
+            box.addView(remove, spaced(dp(12)));
         }
 
-        ScrollView sc = new ScrollView(this);
-        sc.addView(box);
-        holder[0] = b.setView(sc).setNegativeButton(t("Close", "बंद करें"), null).create();
+        holder[0] = new AlertDialog.Builder(this)
+                .setTitle(t("Sound", "आवाज़"))
+                .setView(scroll(box))
+                .setNegativeButton(t("Close", "बंद करें"), null)
+                .create();
         holder[0].show();
     }
 
@@ -1597,8 +1741,8 @@ public class MainActivity extends Activity {
         emojis.setColumnCount(5);
         String[] list = {
                 "🦋", "🌸", "🌺", "🌻", "🌈", "⭐", "🌟", "✨", "💫", "🔆",
-                "❤️", "💖", "💐", "🎀", "🎉", "😊", "🥰", "👍", "🙏", "👵",
-                "🕉️", "🪔", "🦚", "🍀", "🎂", "🔥", "🔔", "😍", "🤗", "💫"
+                "❤️", "💖", "💐", "🎀", "🎉", "😊", "🥰", "👍", "🙏", "🎊",
+                "🕉️", "🪔", "🦚", "🍀", "🎂", "🔥", "🔔", "😍", "🤗", "🪅"
         };
         for (final String e : list) {
             TextView cell = new TextView(this);
