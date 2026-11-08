@@ -194,6 +194,11 @@ public class MainActivity extends Activity {
         }
 
         if (back != null) {
+            undoBtn = headerIcon("↩️", this::undo);
+            bar.addView(undoBtn);
+            redoBtn = headerIcon("↪️", this::redo);
+            bar.addView(redoBtn);
+
             TextView helpBtn = new TextView(this);
             helpBtn.setText("❓");
             helpBtn.setTextSize(16f);
@@ -259,6 +264,17 @@ public class MainActivity extends Activity {
         return bar;
     }
 
+    private TextView headerIcon(String glyph, Runnable action) {
+        TextView tv = new TextView(this);
+        tv.setText(glyph);
+        tv.setTextSize(16f);
+        tv.setGravity(Gravity.CENTER);
+        tv.setPadding(dp(8), dp(4), dp(8), dp(4));
+        tv.setClickable(true);
+        tv.setOnClickListener(v -> action.run());
+        return tv;
+    }
+
     private void helpDialog() {
         String[] steps = hindi
                 ? new String[]{
@@ -266,6 +282,8 @@ public class MainActivity extends Activity {
                 "2️⃣  टेक्स्ट, स्टिकर, संगीत और इफ़ेक्ट लगाएं",
                 "3️⃣  “वीडियो बनाएं” दबाएं — वीडियो गैलरी में सेव हो जाएगा",
                 "📁  आपके सारे वीडियो ड्राफ्ट में सेव रहते हैं — बाद में बदल सकते हैं",
+                "🎞️  टाइमलाइन पर उंगली सरकाएं, दो उंगली से ज़ूम, किनारे खींच कर काटें",
+                "↩️  गलती हो जाए तो ↩️ दबाएं (आगे के लिए ↪️)",
                 "👆  टेक्स्ट को उंगली से खींच कर कहीं भी रखें",
                 "➕  नीचे ➕ से और फ़ोटो जोड़ें, लंबा दबाकर ड्राफ्ट हटाएं"
         }
@@ -274,6 +292,8 @@ public class MainActivity extends Activity {
                 "2️⃣  Add text, stickers, music, effects and looks",
                 "3️⃣  Press “Make Video” — it is saved to your Gallery",
                 "📁  Everything is kept in Drafts, so you can change it later",
+                "🎞️  Drag on the timeline to scrub, pinch to zoom, drag a clip's orange edge to trim",
+                "↩️  Made a mistake? Press ↩️ to undo (↪️ redoes it)",
                 "👆  Drag text and stickers anywhere with your finger",
                 "➕  Use ➕ to add more photos, press and hold a draft to delete it"
         };
@@ -300,9 +320,10 @@ public class MainActivity extends Activity {
 
     private View buildHome() {
         ScrollView scroll = new ScrollView(this);
+        scroll.setVerticalScrollBarEnabled(false);
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(dp(12), dp(12), dp(12), dp(20));
+        box.setPadding(dp(12), dp(8), dp(12), dp(12));
         scroll.addView(box);
 
         List<Project> projects = ProjectStore.list(this);
@@ -310,41 +331,90 @@ public class MainActivity extends Activity {
         if (projects.isEmpty()) {
             LinearLayout empty = new LinearLayout(this);
             empty.setOrientation(LinearLayout.VERTICAL);
-            empty.setGravity(Gravity.CENTER);
-            empty.setPadding(dp(8), dp(40), dp(8), dp(20));
+            empty.setGravity(Gravity.CENTER_HORIZONTAL);
+            empty.setPadding(dp(4), dp(6), dp(4), dp(6));
+
             TextView hero = new TextView(this);
             hero.setText("🎬");
-            hero.setTextSize(52f);
+            hero.setTextSize(40f);
             hero.setGravity(Gravity.CENTER);
             empty.addView(hero);
 
             TextView title = new TextView(this);
             title.setText(t("Make a video in 3 easy steps", "3 आसान कदमों में वीडियो बनाएं"));
-            title.setTextSize(21f);
+            title.setTextSize(20f);
             title.setTypeface(Typeface.DEFAULT_BOLD);
             title.setTextColor(INK);
             title.setGravity(Gravity.CENTER);
-            empty.addView(title, spaced(dp(8)));
+            empty.addView(title, spaced(dp(2)));
 
-            empty.addView(stepCard("1", t("Add your photos and videos", "अपनी फ़ोटो और वीडियो जोड़ें")));
-            empty.addView(stepCard("2", t("Add text, stickers and music",
-                    "टेक्स्ट, स्टिकर और संगीत जोड़ें")));
-            empty.addView(stepCard("3", t("Press “Make Video”", "“वीडियो बनाएं” दबाएं")));
+            TextView add = bigButton(t("➕  Add Photos & Videos", "➕  फ़ोटो और वीडियो जोड़ें"),
+                    ACCENT, Color.WHITE);
+            add.setOnClickListener(v -> pickMedia());
+            LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(dp(320), dp(56));
+            alp.setMargins(0, dp(12), 0, dp(10));
+            empty.addView(add, alp);
+
+            LinearLayout steps = new LinearLayout(this);
+            steps.setOrientation(LinearLayout.HORIZONTAL);
+            steps.addView(stepCard("1", t("Add photos and videos", "फ़ोटो और वीडियो जोड़ें")),
+                    rowWeight(4));
+            steps.addView(stepCard("2", t("Add text, stickers, music", "टेक्स्ट, स्टिकर, संगीत")),
+                    rowWeight(4));
+            steps.addView(stepCard("3", t("Press “Make Video”", "“वीडियो बनाएं” दबाएं")),
+                    rowWeight(4));
+            empty.addView(steps, new LinearLayout.LayoutParams(MATCH, WRAP));
+
             box.addView(empty);
         } else {
+            LinearLayout head = new LinearLayout(this);
+            head.setOrientation(LinearLayout.HORIZONTAL);
+            head.setGravity(Gravity.CENTER_VERTICAL);
+
             TextView title = new TextView(this);
-            title.setText(t("Your drafts", "आपके ड्राफ्ट"));
-            title.setTextSize(18f);
+            title.setText(t("Your drafts · " + projects.size(), "आपके ड्राफ्ट · " + projects.size()));
+            title.setTextSize(17f);
             title.setTypeface(Typeface.DEFAULT_BOLD);
             title.setTextColor(MUTED);
-            title.setPadding(dp(4), dp(2), 0, dp(8));
-            box.addView(title);
+            title.setPadding(dp(4), 0, 0, 0);
+            head.addView(title, new LinearLayout.LayoutParams(0, WRAP, 1f));
 
-            for (final Project p : projects) {
-                box.addView(projectCard(p));
+            TextView add = bigButton(t("➕ New", "➕ नया"), ACCENT, Color.WHITE);
+            add.setOnClickListener(v -> newProject());
+            LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(dp(96), dp(38));
+            alp.setMargins(0, 0, dp(4), dp(6));
+            head.addView(add, alp);
+            box.addView(head);
+
+            LinearLayout row = null;
+            for (int i = 0; i < projects.size(); i++) {
+                if (i % 2 == 0) {
+                    row = new LinearLayout(this);
+                    row.setOrientation(LinearLayout.HORIZONTAL);
+                    box.addView(row, new LinearLayout.LayoutParams(MATCH, WRAP));
+                }
+                View card = projectCard(projects.get(i));
+                row.addView(card, rowCardLp());
+            }
+            if (projects.size() % 2 == 1) {
+                View filler = new View(this);
+                row.addView(filler, rowCardLp());
             }
         }
         return scroll;
+    }
+
+    private LinearLayout.LayoutParams rowWeight(float weight) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, WRAP, weight);
+        lp.setMargins(dp(3), dp(3), dp(3), dp(3));
+        return lp;
+    }
+
+    /** Half a screen wide, with a gap on both sides. */
+    private LinearLayout.LayoutParams rowCardLp() {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, WRAP, 1f);
+        lp.setMargins(dp(3), dp(3), dp(3), dp(3));
+        return lp;
     }
 
     private View projectCard(final Project p) {
@@ -353,9 +423,7 @@ public class MainActivity extends Activity {
         card.setGravity(Gravity.CENTER_VERTICAL);
         card.setBackground(round(CARD, 18, LINE));
         card.setPadding(dp(10), dp(10), dp(12), dp(10));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(MATCH, WRAP);
-        lp.setMargins(0, dp(5), 0, dp(5));
-        card.setLayoutParams(lp);
+        card.setLayoutParams(new LinearLayout.LayoutParams(MATCH, WRAP));
 
         FrameLayout thumbBox = new FrameLayout(this);
         GradientDrawable tb = new GradientDrawable();
@@ -370,8 +438,8 @@ public class MainActivity extends Activity {
         } else {
             iv.setBackgroundColor(0xFF2A2320);
         }
-        thumbBox.addView(iv, new FrameLayout.LayoutParams(dp(64), dp(64)));
-        card.addView(thumbBox, new LinearLayout.LayoutParams(dp(64), dp(64)));
+        thumbBox.addView(iv, new FrameLayout.LayoutParams(dp(58), dp(58)));
+        card.addView(thumbBox, new LinearLayout.LayoutParams(dp(58), dp(58)));
 
         LinearLayout info = new LinearLayout(this);
         info.setOrientation(LinearLayout.VERTICAL);
@@ -638,6 +706,23 @@ public class MainActivity extends Activity {
             public void onScrubEnd(long timeMs) {
                 renderAt(timeMs);
             }
+
+            @Override
+            public void onTrim(int index, boolean leftEdge, long boundaryMs) {
+                applyTrim(index, leftEdge, boundaryMs);
+            }
+
+            @Override
+            public void onTrimEnd() {
+                if (!trimming) {
+                    return;
+                }
+                trimming = false;
+                trimRight = 0;
+                saveCurrent();
+                rebuildTimeline();
+                renderAt(playheadMs);
+            }
         });
         left.addView(timeline, new LinearLayout.LayoutParams(MATCH, dp(86)));
         return panel;
@@ -824,9 +909,7 @@ public class MainActivity extends Activity {
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setBackground(round(CARD, 18, LINE));
         row.setPadding(dp(14), dp(12), dp(14), dp(12));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(MATCH, WRAP);
-        lp.setMargins(0, dp(6), 0, 0);
-        row.setLayoutParams(lp);
+        row.setLayoutParams(new LinearLayout.LayoutParams(WRAP, WRAP));
 
         TextView n = new TextView(this);
         n.setText(number);
@@ -857,6 +940,83 @@ public class MainActivity extends Activity {
     private Clip current() {
         return project != null && sel >= 0 && sel < project.clips.size()
                 ? project.clips.get(sel) : null;
+    }
+
+    /* ---------------------------------------------------------------- history */
+
+    private final java.util.ArrayDeque<List<Clip>> undoStack = new java.util.ArrayDeque<>();
+    private final java.util.ArrayDeque<List<Clip>> redoStack = new java.util.ArrayDeque<>();
+    private static final int UNDO_LIMIT = 40;
+    private TextView undoBtn;
+    private TextView redoBtn;
+    private boolean trimming;
+    private long trimRight;
+    private long trimOrigDur;
+    private long trimOrigStart;
+
+    private static List<Clip> copyClips(List<Clip> in) {
+        List<Clip> out = new ArrayList<>(in.size());
+        for (Clip c : in) {
+            out.add(c.copy());
+        }
+        return out;
+    }
+
+    /** Remember the current clips so ↩️ can bring them back. */
+    private void pushUndo() {
+        if (project == null) {
+            return;
+        }
+        undoStack.push(copyClips(project.clips));
+        while (undoStack.size() > UNDO_LIMIT) {
+            undoStack.removeLast();
+        }
+        redoStack.clear();
+        updateUndoButtons();
+    }
+
+    private void undo() {
+        if (project == null || undoStack.isEmpty()) {
+            toast(t("Nothing more to undo", "इससे पहले कुछ नहीं"));
+            return;
+        }
+        redoStack.push(copyClips(project.clips));
+        project.clips.clear();
+        project.clips.addAll(undoStack.pop());
+        afterHistory();
+        toast(t("Undone ↩️", "पहले जैसा ↩️"));
+    }
+
+    private void redo() {
+        if (project == null || redoStack.isEmpty()) {
+            return;
+        }
+        undoStack.push(copyClips(project.clips));
+        project.clips.clear();
+        project.clips.addAll(redoStack.pop());
+        afterHistory();
+    }
+
+    private void afterHistory() {
+        if (project.clips.isEmpty()) {
+            sel = -1;
+        } else {
+            sel = Math.max(0, Math.min(sel, project.clips.size() - 1));
+        }
+        selOverlay = null;
+        playheadMs = Math.max(0, Math.min(playheadMs, Math.max(0, project.totalMs() - 1)));
+        refresh();
+        saveCurrent();
+        updateUndoButtons();
+    }
+
+    private void updateUndoButtons() {
+        if (undoBtn != null) {
+            undoBtn.setAlpha(undoStack.isEmpty() ? 0.4f : 1f);
+        }
+        if (redoBtn != null) {
+            redoBtn.setAlpha(redoStack.isEmpty() ? 0.4f : 1f);
+        }
     }
 
     private Bitmap decodeBase64(String b64) {
@@ -912,6 +1072,60 @@ public class MainActivity extends Activity {
         timeline.setProject(project);
         timeline.setSelected(sel);
         timeline.setPlayhead(playheadMs);
+    }
+
+    /** Where clip {@code index} starts on the timeline. */
+    private long startOfClip(int index) {
+        long acc = 0;
+        for (int i = 0; i < index && i < project.clips.size(); i++) {
+            acc += Math.max(200, project.clips.get(i).durationMs);
+        }
+        return acc;
+    }
+
+    /** Longest this clip can be, given its source. */
+    private long maxTimelineDur(Clip c) {
+        if (c.isVideo() && c.sourceDurationMs > 0) {
+            long max = Math.round((c.sourceDurationMs - c.startMs) / Math.max(0.05f, c.speed));
+            return Math.max(300, max);
+        }
+        return 60000;
+    }
+
+    /** Dragging a clip's edge on the timeline: shorten it from one side. */
+    private void applyTrim(int index, boolean leftEdge, long boundaryMs) {
+        if (project == null || index < 0 || index >= project.clips.size()) {
+            return;
+        }
+        Clip c = project.clips.get(index);
+        long acc = startOfClip(index);
+        long dur = Math.max(200, c.durationMs);
+        if (!trimming) {
+            pushUndo();
+            trimming = true;
+            trimRight = acc + dur;
+            trimOrigDur = dur;
+            trimOrigStart = c.startMs;
+        }
+        if (leftEdge) {
+            long newDur = Math.max(300, Math.min(trimOrigDur, trimRight - boundaryMs));
+            long cut = trimOrigDur - newDur;
+            if (c.isVideo()) {
+                long src = trimOrigStart + Math.round(cut * c.speed);
+                src = Math.max(0, Math.min(src, Math.max(0, c.sourceDurationMs - 300)));
+                long allowed = Math.max(300,
+                        Math.round((c.sourceDurationMs - src) / Math.max(0.05f, c.speed)));
+                c.startMs = src;
+                c.durationMs = Math.min(newDur, allowed);
+            } else {
+                c.durationMs = newDur;
+            }
+        } else {
+            long newDur = Math.max(300, Math.min(boundaryMs - acc, maxTimelineDur(c)));
+            c.durationMs = newDur;
+        }
+        rebuildTimeline();
+        updateSpeedLabel();
     }
 
     private int clipIndexAt(long timeMs) {
@@ -1029,6 +1243,7 @@ public class MainActivity extends Activity {
         if (c == null) {
             return;
         }
+        pushUndo();
         if (c.isVideo()) {
             toast(t("Use Speed to change a video's length", "वीडियो की लंबाई गति से बदलें"));
             return;
@@ -1055,6 +1270,7 @@ public class MainActivity extends Activity {
         if (sel < 0 || target < 0 || target >= project.clips.size()) {
             return;
         }
+        pushUndo();
         Clip a = project.clips.get(sel);
         project.clips.set(sel, project.clips.get(target));
         project.clips.set(target, a);
@@ -1067,6 +1283,7 @@ public class MainActivity extends Activity {
         if (current() == null) {
             return;
         }
+        pushUndo();
         project.clips.remove(sel);
         selOverlay = null;
         if (sel >= project.clips.size()) {
@@ -1081,6 +1298,7 @@ public class MainActivity extends Activity {
         if (c == null) {
             return;
         }
+        pushUndo();
         try {
             Clip copy = Clip.fromJson(c.toJson());
             copy.image = c.image;
@@ -1108,6 +1326,7 @@ public class MainActivity extends Activity {
         if (local < 250 || local > duration - 250) {
             local = duration / 2; // playhead at the edges -> cut in the middle
         }
+        pushUndo();
         try {
             long sourceEnd = c.sourceEndMs();
             Clip second = Clip.fromJson(c.toJson());
@@ -1173,6 +1392,7 @@ public class MainActivity extends Activity {
         if (c == null || selOverlay == null) {
             return;
         }
+        pushUndo();
         c.overlays.remove(selOverlay);
         selOverlay = null;
         updateOverlayTools();
@@ -1244,6 +1464,7 @@ public class MainActivity extends Activity {
                 t("Black & White", "काला-सफ़ेद"), t("Vivid", "चटक"), t("Sepia", "पुराना")
         };
         choose(t("Choose a look", "रंग चुनें"), labels, c.filter, index -> {
+            pushUndo();
             c.filter = index;
             preview.invalidate();
             rebuildTimeline();
@@ -1268,6 +1489,7 @@ public class MainActivity extends Activity {
         };
         choose(t("How should this clip appear?", "यह क्लिप कैसे आए?"), labels, c.transition,
                 index -> {
+                    pushUndo();
                     c.transition = index;
                     rebuildTimeline();
                     saveCurrent();
@@ -1294,6 +1516,7 @@ public class MainActivity extends Activity {
             }
         }
         choose(t("Video speed", "वीडियो की गति"), labels, selected, index -> {
+            pushUndo();
             c.speed = speeds[index];
             long span = Math.max(400, c.sourceDurationMs - c.startMs);
             c.durationMs = Math.max(400, Math.round(span / c.speed));
@@ -1647,6 +1870,7 @@ public class MainActivity extends Activity {
                     Overlay o = new Overlay(Overlay.TEXT, text, chosen[0], 0.5f, 0.78f, 0.06f);
                     o.glow = glow[0];
                     o.font = chosenFont[0];
+                    pushUndo();
                     c.overlays.add(o);
                     selOverlay = o;
                     dialog.dismiss();
@@ -1797,6 +2021,7 @@ public class MainActivity extends Activity {
     private void addStickerTo(Clip c, int type, String text, int color, float size) {
         Overlay o = new Overlay(type, text, color, 0.5f,
                 type == Overlay.BADGE ? 0.7f : 0.40f, size);
+        pushUndo();
         c.overlays.add(o);
         selOverlay = o;
         updateOverlayTools();
@@ -1882,6 +2107,7 @@ public class MainActivity extends Activity {
     }
 
     private void loadClips(final List<Uri> uris) {
+        pushUndo();
         showBusy(t("Adding your photos…", "फ़ोटो जोड़ी जा रही हैं…"));
         new Thread(() -> {
             final List<Clip> loaded = new ArrayList<>();
@@ -2062,8 +2288,10 @@ public class MainActivity extends Activity {
         box.setBackgroundColor(0xFF0D0A09);
         final ImageView view = new ImageView(this);
         view.setAdjustViewBounds(true);
-        view.setMinimumHeight(dp(320));
-        box.addView(view, new LinearLayout.LayoutParams(MATCH, dp(420)));
+        int previewH = Math.max(dp(150),
+                Math.min(dp(420), Math.round(getResources().getDisplayMetrics().heightPixels * 0.62f)));
+        view.setMinimumHeight(previewH / 2);
+        box.addView(view, new LinearLayout.LayoutParams(MATCH, previewH));
 
         TextView stop = bigButton(t("⏹  Stop", "⏹  रोकें"), CARD, INK);
         box.addView(stop, spaced(dp(8)));

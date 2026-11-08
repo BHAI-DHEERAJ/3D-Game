@@ -27,6 +27,12 @@ public class TimelineView extends View {
 
         /** Finger lifted after scrubbing — good moment to render a frame. */
         void onScrubEnd(long timeMs);
+
+        /** An edge of a clip is being dragged: it should now start or end at this time. */
+        void onTrim(int index, boolean leftEdge, long boundaryMs);
+
+        /** Trimming finished — save and re-render. */
+        void onTrimEnd();
     }
 
     private final Paint background = new Paint();
@@ -54,6 +60,12 @@ public class TimelineView extends View {
     private float downY;
     private boolean dragging;
     private int tapCandidate = -1;
+    private static final int MODE_NONE = 0;
+    private static final int MODE_DRAG = 1;
+    private static final int MODE_TRIM_LEFT = 2;
+    private static final int MODE_TRIM_RIGHT = 3;
+    private int mode = MODE_NONE;
+    private int trimIndex = -1;
     private final int touchSlop;
     private final float density;
 
@@ -121,7 +133,23 @@ public class TimelineView extends View {
 
     public void setPlayhead(long ms) {
         playhead = Math.max(0, ms);
+        if (mode == MODE_NONE) {
+            ensureVisible(playhead);
+        }
         invalidate();
+    }
+
+    /** Keeps the playhead on screen once the timeline is zoomed in. */
+    private void ensureVisible(long ms) {
+        if (zoom <= 1.001f || getWidth() == 0) {
+            return;
+        }
+        float x = timeToX(ms);
+        float margin = dp(30);
+        if (x < margin || x > getWidth() - margin) {
+            scrollMs = ms - (usableWidth() / pxPerMs()) / 2f;
+            clampScroll();
+        }
     }
 
     public long getPlayhead() {
@@ -237,6 +265,15 @@ public class TimelineView extends View {
 
             borderPaint.setColor(i == selected ? 0xFFFF6B35 : 0x55FFFFFF);
             c.drawRoundRect(block, dp(5), dp(5), borderPaint);
+
+            // grab handles on the selected clip — drag them to trim
+            if (i == selected && block.width() > dp(20)) {
+                blockPaint.setColor(0xFFFF6B35);
+                c.drawRoundRect(block.left + dp(1), block.top + dp(6), block.left + dp(4),
+                        block.bottom - dp(6), dp(2), dp(2), blockPaint);
+                c.drawRoundRect(block.right - dp(4), block.top + dp(6), block.right - dp(1),
+                        block.bottom - dp(6), dp(2), dp(2), blockPaint);
+            }
         }
 
         // ---- audio lane
@@ -273,6 +310,12 @@ public class TimelineView extends View {
     private void drawRuler(Canvas c, float rulerH) {
         rulerPaint.setColor(0xFF1E1815);
         c.drawRect(0, 0, getWidth(), rulerH, rulerPaint);
+        rulerPaint.setColor(0xFF9E8F87);
+        // whole movie length, right aligned
+        String totalLabel = Project.seconds(totalMs()) + "  total";
+        float tw = rulerPaint.measureText(totalLabel);
+        rulerPaint.setColor(0xFFE0A96D);
+        c.drawText(totalLabel, getWidth() - tw - dp(4), rulerH - dp(5), rulerPaint);
         rulerPaint.setColor(0xFF9E8F87);
 
         long total = totalMs();
@@ -316,6 +359,23 @@ public class TimelineView extends View {
                 downY = e.getY();
                 dragging = false;
                 tapCandidate = clipAt(e.getX(), e.getY());
+                mode = tapCandidate >= 0 ? MODE_DRAG : MODE_NONE;
+                trimIndex = -1;
+                if (tapCandidate >= 0) {
+                    long acc = startOf(tapCandidate);
+                    long dur = Math.max(200, project.clips.get(tapCandidate).durationMs);
+                    float x0 = timeToX(acc);
+                    float x1 = timeToX(acc + dur);
+                    if (Math.abs(e.getX() - x0) <= dp(14)) {
+                        mode = MODE_TRIM_LEFT;
+                        trimIndex = tapCandidate;
+                        selected = tapCandidate;
+                    } else if (Math.abs(e.getX() - x1) <= dp(14)) {
+                        mode = MODE_TRIM_RIGHT;
+                        trimIndex = tapCandidate;
+                        selected = tapCandidate;
+                    }
+                }
                 if (getParent() != null) {
                     getParent().requestDisallowInterceptTouchEvent(true);
                 }
@@ -327,6 +387,13 @@ public class TimelineView extends View {
                 }
                 if (!dragging && Math.abs(e.getX() - downX) > touchSlop) {
                     dragging = true;
+                }
+                if (dragging && (mode == MODE_TRIM_LEFT || mode == MODE_TRIM_RIGHT)
+                        && listener != null && trimIndex >= 0 && trimIndex < project.clips.size()) {
+                    long boundary = (long) Math.max(0, Math.min(totalMs(), xToTime(e.getX())));
+                    listener.onTrim(trimIndex, mode == MODE_TRIM_LEFT, boundary);
+                    invalidate();
+                    return true;
                 }
                 if (dragging) {
                     long t = (long) Math.max(0, Math.min(totalMs(), xToTime(e.getX())));
@@ -340,6 +407,16 @@ public class TimelineView extends View {
 
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL:
+                if (trimIndex >= 0) {
+                    if (listener != null) {
+                        listener.onTrimEnd();
+                    }
+                    mode = MODE_NONE;
+                    trimIndex = -1;
+                    dragging = false;
+                    tapCandidate = -1;
+                    return true;
+                }
                 if (!dragging) {
                     if (tapCandidate >= 0) {
                         selected = tapCandidate;
@@ -366,9 +443,22 @@ public class TimelineView extends View {
                 }
                 dragging = false;
                 tapCandidate = -1;
+                mode = MODE_NONE;
                 return true;
         }
         return true;
+    }
+
+    /** Timeline position where clip {@code index} starts. */
+    private long startOf(int index) {
+        long acc = 0;
+        if (project == null) {
+            return 0;
+        }
+        for (int i = 0; i < index && i < project.clips.size(); i++) {
+            acc += Math.max(200, project.clips.get(i).durationMs);
+        }
+        return acc;
     }
 
     private int clipAt(float x, float y) {

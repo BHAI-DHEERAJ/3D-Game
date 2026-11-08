@@ -67,6 +67,26 @@ public class Clip {
         this.uriString = uri == null ? "" : uri.toString();
     }
 
+    /** A detached copy, for undo snapshots. Bitmaps are shared, never mutated. */
+    public Clip copy() {
+        Clip c = new Clip(kind, uri);
+        c.uriString = uriString;
+        c.startMs = startMs;
+        c.durationMs = durationMs;
+        c.sourceDurationMs = sourceDurationMs;
+        c.speed = speed;
+        c.volume = volume;
+        c.videoRotation = videoRotation;
+        c.transition = transition;
+        c.filter = filter;
+        c.image = image;
+        c.thumb = thumb;
+        for (Overlay ov : overlays) {
+            c.overlays.add(ov.copy());
+        }
+        return c;
+    }
+
     public long sourceEndMs() {
         return startMs + Math.round(durationMs * speed);
     }

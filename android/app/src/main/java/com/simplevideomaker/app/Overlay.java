@@ -42,6 +42,15 @@ public class Overlay {
         this.size = size;
     }
 
+    /** A detached copy, for undo snapshots. */
+    public Overlay copy() {
+        Overlay ov = new Overlay(type, text, color, x, y, size);
+        ov.glow = glow;
+        ov.font = font;
+        ov.allClips = allClips;
+        return ov;
+    }
+
     public JSONObject toJson() throws Exception {
         JSONObject o = new JSONObject();
         o.put("t", type);
