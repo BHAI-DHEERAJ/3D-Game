@@ -1050,7 +1050,8 @@ public class MainActivity extends Activity {
             return;
         }
         if (!c.isVideo()) {
-            return changeDuration();
+            changeDuration();
+            return;
         }
         float[] speeds = {0.5f, 1f, 1.5f, 2f};
         String[] labels = {"0.5× " + t("slow", "धीमा"), "1× " + t("normal", "सामान्य"),
