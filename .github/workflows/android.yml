@@ -19,21 +19,39 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Locate Android SDK
+        run: |
+          set -e
+          for candidate in "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}" /usr/local/lib/android/sdk "$HOME/Android/Sdk"; do
+            if [ -n "$candidate" ] && [ -d "$candidate" ]; then
+              echo "ANDROID_HOME=$candidate" >> "$GITHUB_ENV"
+              echo "ANDROID_SDK_ROOT=$candidate" >> "$GITHUB_ENV"
+              echo "SDK found at $candidate"
+              ls "$candidate"
+              break
+            fi
+          done
+          echo "sdkmanager: $(command -v sdkmanager || echo none)"
 
       - name: Install SDK packages
         run: |
-          yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" > /dev/null
+          SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SM="$(command -v sdkmanager || true)"
+          if [ -z "$SM" ]; then
+            SM=$(find "$SDK/cmdline-tools" -name sdkmanager -type f 2>/dev/null | head -1)
+          fi
+          echo "using $SM"
+          yes | "$SM" --licenses > /dev/null 2>&1 || true
+          "$SM" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+          ls "$SDK/platforms" "$SDK/build-tools"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -55,7 +73,18 @@ jobs:
         env:
           KS_PASS: simplevideo
           KS_ALIAS: simplevideo
-        run: gradle assembleRelease --no-daemon --stacktrace
+        run: gradle assembleRelease --no-daemon --stacktrace 2>&1 | tee build.log
+
+      - name: Show build errors as annotations
+        if: failure()
+        run: |
+          F=android/build.log
+          [ -f "$F" ] || { echo "::error::no build.log produced (failure happened before gradle)"; exit 0; }
+          grep -E "error:|FAILURE|What went wrong|Caused by|> Task .* FAILED" -A 3 "$F" | tail -60 | while IFS= read -r line; do
+            esc="${line//'%'/'%25'}"; esc="${esc//$'\r'/'%0D'}"; esc="${esc//$'\n'/'%0A'}"
+            echo "::error::$esc"
+          done
+          exit 0
 
       - name: Collect APK
         run: |
