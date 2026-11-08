@@ -253,16 +253,40 @@ public final class VideoExporter {
         }
 
         void start() throws IOException {
-            MediaFormat fmt = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, W, H);
-            fmt.setInteger(MediaFormat.KEY_COLOR_FORMAT,
-                    MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible);
-            fmt.setInteger(MediaFormat.KEY_BIT_RATE, 6000000);
-            fmt.setInteger(MediaFormat.KEY_FRAME_RATE, FPS);
-            fmt.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1);
-
-            codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC);
-            codec.configure(fmt, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
-            codec.start();
+            int[] formats = {
+                    MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible,
+                    MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420SemiPlanar,
+                    MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Planar
+            };
+            Throwable last = null;
+            for (int colorFormat : formats) {
+                try {
+                    MediaFormat fmt = MediaFormat.createVideoFormat(
+                            MediaFormat.MIMETYPE_VIDEO_AVC, W, H);
+                    fmt.setInteger(MediaFormat.KEY_COLOR_FORMAT, colorFormat);
+                    fmt.setInteger(MediaFormat.KEY_BIT_RATE, 6000000);
+                    fmt.setInteger(MediaFormat.KEY_FRAME_RATE, FPS);
+                    fmt.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1);
+                    codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC);
+                    codec.configure(fmt, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
+                    codec.start();
+                    last = null;
+                    break;
+                } catch (Throwable t) {
+                    last = t;
+                    try {
+                        if (codec != null) {
+                            codec.release();
+                        }
+                    } catch (Throwable ignored) {
+                    }
+                    codec = null;
+                }
+            }
+            if (codec == null) {
+                throw new IOException("this phone cannot make videos"
+                        + (last == null ? "" : ": " + last.getMessage()));
+            }
             muxer = new MediaMuxer(outFile.getAbsolutePath(),
                     MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
         }

@@ -184,6 +184,17 @@ public class MainActivity extends Activity {
             nameLabel.setOnClickListener(v -> renameProject());
         }
 
+        if (back == null) {
+            TextView help = new TextView(this);
+            help.setText("❓");
+            help.setTextSize(17f);
+            help.setGravity(Gravity.CENTER);
+            help.setPadding(dp(8), dp(4), dp(10), dp(4));
+            help.setClickable(true);
+            help.setOnClickListener(v -> helpDialog());
+            bar.addView(help);
+        }
+
         TextView lang = new TextView(this);
         lang.setText(hindi ? "EN" : "हिं");
         lang.setTextColor(Color.WHITE);
@@ -203,6 +214,43 @@ public class MainActivity extends Activity {
         });
         bar.addView(lang);
         return bar;
+    }
+
+    private void helpDialog() {
+        String[] steps = hindi
+                ? new String[]{
+                "1️⃣  नया वीडियो दबाएं और फ़ोटो/वीडियो चुनें",
+                "2️⃣  टेक्स्ट, स्टिकर, संगीत और इफ़ेक्ट लगाएं",
+                "3️⃣  “वीडियो बनाएं” दबाएं — वीडियो गैलरी में सेव हो जाएगा",
+                "📁  आपके सारे वीडियो ड्राफ्ट में सेव रहते हैं — बाद में बदल सकते हैं",
+                "👆  टेक्स्ट को उंगली से खींच कर कहीं भी रखें",
+                "➕  नीचे ➕ से और फ़ोटो जोड़ें, लंबा दबाकर ड्राफ्ट हटाएं"
+        }
+                : new String[]{
+                "1️⃣  Press “New Video” and pick photos/videos",
+                "2️⃣  Add text, stickers, music, effects and looks",
+                "3️⃣  Press “Make Video” — it is saved to your Gallery",
+                "📁  Everything is kept in Drafts, so you can change it later",
+                "👆  Drag text and stickers anywhere with your finger",
+                "➕  Use ➕ to add more photos, press and hold a draft to delete it"
+        };
+
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(18), dp(10), dp(18), dp(10));
+        for (String line : steps) {
+            TextView tv = new TextView(this);
+            tv.setText(line);
+            tv.setTextSize(16f);
+            tv.setTextColor(INK);
+            tv.setPadding(0, dp(7), 0, dp(7));
+            box.addView(tv);
+        }
+        new AlertDialog.Builder(this)
+                .setTitle(t("How to use", "कैसे इस्तेमाल करें"))
+                .setView(scroll(box))
+                .setPositiveButton(t("Got it", "समझ गया"), null)
+                .show();
     }
 
     /* ------------------------------------------------------------------ home */
