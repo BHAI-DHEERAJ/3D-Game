@@ -10,7 +10,7 @@ on:
       - '.github/workflows/android.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   apk:
@@ -105,3 +105,26 @@ jobs:
           name: signing-keystore
           path: android/keystore.jks
           retention-days: 90
+
+      - name: Publish as a GitHub Release (easy link for the phone)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NOTES="Ready-to-install APK. Download, send it to the phone, tap to install."
+          if gh release view apk-latest > /dev/null 2>&1; then
+            gh release upload apk-latest out/SimpleVideoMaker-1.0.apk --clobber
+          else
+            gh release create apk-latest out/SimpleVideoMaker-1.0.apk \
+              --title "Simple Video Maker — installable APK" \
+              --notes "$NOTES" --latest
+          fi
+
+      - name: Commit the APK so it is available straight from the repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          mkdir -p public
+          cp out/SimpleVideoMaker-1.0.apk public/SimpleVideoMaker-1.0.apk
+          git add -f public/SimpleVideoMaker-1.0.apk
+          git commit -m "build: refresh installable APK [skip ci]" || echo "APK unchanged"
+          git push origin "HEAD:${{ github.ref_name }}"

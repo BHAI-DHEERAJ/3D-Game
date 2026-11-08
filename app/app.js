@@ -638,7 +638,6 @@
       S.selOverlay = null;
       updateOverlayTools();
       redraw();
-      onStageTap();
     }
   });
 
@@ -657,10 +656,6 @@
   function endDrag() { drag = null; }
   stage.addEventListener('pointerup', endDrag);
   stage.addEventListener('pointercancel', endDrag);
-
-  function onStageTap() {
-    if (!S.playing) playTimeline();
-  }
 
   /* ---------------------------------------------------------------- playback */
   function totalDuration() {

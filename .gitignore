@@ -10,3 +10,4 @@ android/keystore.jks
 # tooling
 .DS_Store
 node_modules/
+!public/*.apk
