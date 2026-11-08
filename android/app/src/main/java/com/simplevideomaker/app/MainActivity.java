@@ -85,6 +85,8 @@ public class MainActivity extends Activity {
     private TextView nameLabel;
 
     private AlertDialog busyDialog;
+    private SeekBar sizeSeek;
+    private boolean updatingSeek;
 
     private interface Picker {
         void onPick(int index);
@@ -112,6 +114,9 @@ public class MainActivity extends Activity {
         root.setBackgroundColor(BG);
         root.setFitsSystemWindows(true);
 
+        if (screen == SCREEN_EDITOR) {
+            applyProjectSize();
+        }
         if (screen == SCREEN_HOME) {
             root.addView(buildHeader(null));
             root.addView(buildHome(), new LinearLayout.LayoutParams(MATCH, 0, 1f));
@@ -581,6 +586,7 @@ public class MainActivity extends Activity {
         toolsC.setOrientation(LinearLayout.HORIZONTAL);
         toolsC.addView(tool("🔊", t("Sound", "आवाज़"), false, v -> toggleSound()));
         toolsC.addView(tool("🗑️", t("Remove", "हटाएं"), true, v -> removeClip()));
+        toolsC.addView(tool("📐", t("Size", "साइज़"), false, v -> videoSizeDialog()));
         toolsC.addView(tool("✔️", t("Save", "सेव"), false, v -> {
             saveCurrent();
             toast(t("Draft saved ✔️", "ड्राफ्ट सेव हो गया ✔️"));
@@ -589,15 +595,60 @@ public class MainActivity extends Activity {
         panel.addView(moreRow);
 
         overlayTools = new LinearLayout(this);
-        overlayTools.setOrientation(LinearLayout.HORIZONTAL);
-        overlayTools.addView(tool("➕", t("Bigger", "बड़ा"), false, v -> resize(1.18f)));
-        overlayTools.addView(tool("➖", t("Smaller", "छोटा"), false, v -> resize(1f / 1.18f)));
-        overlayTools.addView(tool("✨", t("Glow", "चमक"), false, v -> toggleGlow()));
-        overlayTools.addView(tool("🗑️", t("Remove", "हटाएं"), true, v -> removeOverlay()));
-        overlayTools.addView(tool("✔️", t("Done", "ठीक है"), false, v -> {
+        overlayTools.setOrientation(LinearLayout.VERTICAL);
+
+        LinearLayout overlayButtons = new LinearLayout(this);
+        overlayButtons.setOrientation(LinearLayout.HORIZONTAL);
+        overlayButtons.addView(tool("➕", t("Bigger", "बड़ा"), false, v -> resize(1.18f)));
+        overlayButtons.addView(tool("➖", t("Smaller", "छोटा"), false, v -> resize(1f / 1.18f)));
+        overlayButtons.addView(tool("✨", t("Glow", "चमक"), false, v -> toggleGlow()));
+        overlayButtons.addView(tool("🗑️", t("Remove", "हटाएं"), true, v -> removeOverlay()));
+        overlayButtons.addView(tool("✔️", t("Done", "ठीक है"), false, v -> {
             selOverlay = null;
             updateOverlayTools();
         }));
+        overlayTools.addView(overlayButtons);
+
+        LinearLayout sizeRow = new LinearLayout(this);
+        sizeRow.setOrientation(LinearLayout.HORIZONTAL);
+        sizeRow.setGravity(Gravity.CENTER_VERTICAL);
+        sizeRow.setPadding(dp(8), dp(2), dp(8), dp(4));
+
+        TextView small = new TextView(this);
+        small.setText("🔍");
+        small.setTextSize(13f);
+        sizeRow.addView(small);
+
+        sizeSeek = new SeekBar(this);
+        sizeSeek.setMax(93);
+        sizeSeek.setProgress(13);
+        sizeSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                if (fromUser && selOverlay != null) {
+                    selOverlay.size = Math.max(0.02f, Math.min(0.95f, progress / 100f));
+                    preview.invalidate();
+                }
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                saveCurrent();
+            }
+        });
+        LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(0, WRAP, 1f);
+        sizeRow.addView(sizeSeek, slp);
+
+        TextView big = new TextView(this);
+        big.setText("🔍");
+        big.setTextSize(20f);
+        sizeRow.addView(big);
+
+        overlayTools.addView(sizeRow);
         overlayTools.setVisibility(View.GONE);
         panel.addView(overlayTools);
         return panel;
@@ -838,6 +889,19 @@ public class MainActivity extends Activity {
             return;
         }
         overlayTools.setVisibility(selOverlay != null ? View.VISIBLE : View.GONE);
+        if (selOverlay != null && sizeSeek != null) {
+            updatingSeek = true;
+            sizeSeek.setProgress((int) (selOverlay.size * 100));
+            updatingSeek = false;
+        }
+    }
+
+    private void applyProjectSize() {
+        if (project != null) {
+            FrameRenderer.setOutputSize(project.outWidth, project.outHeight);
+        } else {
+            FrameRenderer.setOutputSize(720, 1280);
+        }
     }
 
     private void saveCurrent() {
@@ -973,7 +1037,8 @@ public class MainActivity extends Activity {
         if (selOverlay == null) {
             return;
         }
-        selOverlay.size = Math.max(0.03f, Math.min(0.5f, selOverlay.size * factor));
+        selOverlay.size = Math.max(0.02f, Math.min(0.95f, selOverlay.size * factor));
+        updateOverlayTools();
         preview.invalidate();
     }
 
@@ -1117,6 +1182,63 @@ public class MainActivity extends Activity {
             updateSpeedLabel();
             rebuildTimeline();
             saveCurrent();
+        });
+    }
+
+    private void videoSizeDialog() {
+        if (project == null) {
+            return;
+        }
+        final int[][] sizes = {
+                {720, 1280}, {1080, 1920}, {1080, 1080}, {1920, 1080}, {540, 960}
+        };
+        String[] labels = {
+                t("Portrait HD · 720×1280 (recommended)", "पोर्ट्रेट HD · 720×1280 (सुझाव)"),
+                t("Portrait Full HD · 1080×1920 (slower)", "पोर्ट्रेट फुल HD · 1080×1920 (धीमा)"),
+                t("Square · 1080×1080 (Instagram)", "चौकोर · 1080×1080 (इंस्टाग्राम)"),
+                t("Landscape · 1920×1080 (YouTube)", "लैंडस्केप · 1920×1080 (यूट्यूब)"),
+                t("Small · 540×960 (fastest)", "छोटा · 540×960 (सबसे तेज़)")
+        };
+        int selected = 0;
+        for (int i = 0; i < sizes.length; i++) {
+            if (sizes[i][0] == project.outWidth && sizes[i][1] == project.outHeight) {
+                selected = i;
+            }
+        }
+        choose(t("Video size", "वीडियो का साइज़"), labels, selected, index -> {
+            project.outWidth = sizes[index][0];
+            project.outHeight = sizes[index][1];
+            applyProjectSize();
+            saveCurrent();
+            buildUi();
+            qualityDialog();
+        });
+    }
+
+    private void qualityDialog() {
+        if (project == null) {
+            return;
+        }
+        final int[] rates = {2500000, 5000000, 8000000, 12000000};
+        String[] labels = {
+                t("Small file · 2.5 Mbps", "छोटी फ़ाइल · 2.5 Mbps"),
+                t("Normal · 5 Mbps", "सामान्य · 5 Mbps"),
+                t("High · 8 Mbps", "अच्छी · 8 Mbps"),
+                t("Best · 12 Mbps", "सबसे अच्छी · 12 Mbps")
+        };
+        int selected = 1;
+        int best = Integer.MAX_VALUE;
+        for (int i = 0; i < rates.length; i++) {
+            int diff = Math.abs(rates[i] - project.bitrate);
+            if (diff < best) {
+                best = diff;
+                selected = i;
+            }
+        }
+        choose(t("Video quality", "वीडियो क्वालिटी"), labels, selected, index -> {
+            project.bitrate = rates[index];
+            saveCurrent();
+            toast(t("Video size saved 📐", "साइज़ सेव हो गया 📐"));
         });
     }
 
@@ -1293,6 +1415,44 @@ public class MainActivity extends Activity {
         }
         box.addView(palette);
 
+        TextView fontLabel = new TextView(this);
+        fontLabel.setText(t("Font", "फ़ॉन्ट"));
+        fontLabel.setTextSize(15f);
+        fontLabel.setTextColor(MUTED);
+        box.addView(fontLabel, spaced(dp(12)));
+
+        final int[] chosenFont = {0};
+        HorizontalScrollView fontScroll = new HorizontalScrollView(this);
+        fontScroll.setHorizontalScrollBarEnabled(false);
+        LinearLayout fontRow = new LinearLayout(this);
+        fontRow.setOrientation(LinearLayout.HORIZONTAL);
+        final TextView[] fontButtons = new TextView[6];
+        for (int i = 0; i < 6; i++) {
+            final int fi = i;
+            TextView btn = new TextView(this);
+            btn.setText("Abc");
+            btn.setTypeface(FrameRenderer.typefaceFor(i));
+            btn.setTextSize(17f);
+            btn.setTextColor(INK);
+            btn.setBackground(round(i == 0 ? 0xFFFFEDE6 : CARD, 12, i == 0 ? ACCENT : LINE));
+            btn.setPadding(dp(14), dp(9), dp(14), dp(9));
+            btn.setClickable(true);
+            LinearLayout.LayoutParams flp = new LinearLayout.LayoutParams(WRAP, WRAP);
+            flp.setMargins(dp(3), dp(6), dp(3), dp(6));
+            btn.setLayoutParams(flp);
+            btn.setOnClickListener(v -> {
+                chosenFont[0] = fi;
+                for (int k = 0; k < fontButtons.length; k++) {
+                    fontButtons[k].setBackground(round(k == fi ? 0xFFFFEDE6 : CARD, 12,
+                            k == fi ? ACCENT : LINE));
+                }
+            });
+            fontButtons[i] = btn;
+            fontRow.addView(btn);
+        }
+        fontScroll.addView(fontRow);
+        box.addView(fontScroll);
+
         final boolean[] glow = {false};
         TextView glowBtn = bigButton(t("✨  Add glow", "✨  चमक जोड़ें"), CARD, INK);
         glowBtn.setOnClickListener(v -> {
@@ -1317,6 +1477,7 @@ public class MainActivity extends Activity {
                     }
                     Overlay o = new Overlay(Overlay.TEXT, text, chosen[0], 0.5f, 0.78f, 0.06f);
                     o.glow = glow[0];
+                    o.font = chosenFont[0];
                     c.overlays.add(o);
                     selOverlay = o;
                     dialog.dismiss();
@@ -1357,11 +1518,38 @@ public class MainActivity extends Activity {
         column.setPadding(dp(12), dp(10), dp(12), dp(12));
         sc.addView(column);
 
+        TextView artTitle = new TextView(this);
+        artTitle.setText(t("Stickers", "स्टिकर"));
+        artTitle.setTextSize(14f);
+        artTitle.setTextColor(MUTED);
+        column.addView(artTitle);
+
+        GridLayout arts = new GridLayout(this);
+        arts.setColumnCount(4);
+        for (final String key : StickerArt.KEYS) {
+            FrameLayout cell = new FrameLayout(this);
+            cell.setBackground(round(CARD, 14, LINE));
+            cell.addView(new StickerChip(this, key), new FrameLayout.LayoutParams(MATCH, MATCH));
+            cell.setClickable(true);
+            cell.setOnClickListener(v -> {
+                addStickerTo(c, Overlay.ART, key, Color.WHITE, 0.24f);
+                dialog.dismiss();
+            });
+            GridLayout.LayoutParams lp = new GridLayout.LayoutParams();
+            lp.width = 0;
+            lp.height = dp(62);
+            lp.columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f);
+            lp.setMargins(dp(3), dp(3), dp(3), dp(3));
+            cell.setLayoutParams(lp);
+            arts.addView(cell);
+        }
+        column.addView(arts);
+
         TextView badgesTitle = new TextView(this);
         badgesTitle.setText(t("Buttons", "बैज"));
         badgesTitle.setTextSize(14f);
         badgesTitle.setTextColor(MUTED);
-        column.addView(badgesTitle);
+        column.addView(badgesTitle, spaced(dp(12)));
 
         GridLayout badges = new GridLayout(this);
         badges.setColumnCount(2);
@@ -1392,7 +1580,7 @@ public class MainActivity extends Activity {
             lp.setMargins(dp(3), dp(4), dp(3), dp(4));
             cell.setLayoutParams(lp);
             cell.setOnClickListener(v -> {
-                addStickerTo(c, Overlay.BADGE, text, color);
+                addStickerTo(c, Overlay.BADGE, text, color, 0.045f);
                 dialog.dismiss();
             });
             badges.addView(cell);
@@ -1400,7 +1588,7 @@ public class MainActivity extends Activity {
         column.addView(badges);
 
         TextView emojiTitle = new TextView(this);
-        emojiTitle.setText(t("Stickers", "स्टिकर"));
+        emojiTitle.setText(t("Emoji", "इमोजी"));
         emojiTitle.setTextSize(14f);
         emojiTitle.setTextColor(MUTED);
         column.addView(emojiTitle, spaced(dp(12)));
@@ -1426,7 +1614,7 @@ public class MainActivity extends Activity {
             lp.setMargins(dp(3), dp(3), dp(3), dp(3));
             cell.setLayoutParams(lp);
             cell.setOnClickListener(v -> {
-                addStickerTo(c, Overlay.EMOJI, e, Color.WHITE);
+                addStickerTo(c, Overlay.EMOJI, e, Color.WHITE, 0.13f);
                 dialog.dismiss();
             });
             emojis.addView(cell);
@@ -1437,10 +1625,9 @@ public class MainActivity extends Activity {
         dialog.show();
     }
 
-    private void addStickerTo(Clip c, int type, String text, int color) {
-        Overlay o = type == Overlay.BADGE
-                ? new Overlay(Overlay.BADGE, text, color, 0.5f, 0.7f, 0.045f)
-                : new Overlay(Overlay.EMOJI, text, Color.WHITE, 0.5f, 0.35f, 0.13f);
+    private void addStickerTo(Clip c, int type, String text, int color, float size) {
+        Overlay o = new Overlay(type, text, color, 0.5f,
+                type == Overlay.BADGE ? 0.7f : 0.40f, size);
         c.overlays.add(o);
         selOverlay = o;
         updateOverlayTools();
@@ -1698,6 +1885,7 @@ public class MainActivity extends Activity {
             return;
         }
         busy = true;
+        applyProjectSize();
         final boolean[] cancelled = {false};
 
         LinearLayout box = new LinearLayout(this);

@@ -8,6 +8,11 @@ public class Overlay {
     public static final int TEXT = 0;
     public static final int BADGE = 1;
     public static final int EMOJI = 2;
+    /** A drawn vector sticker (see StickerArt). */
+    public static final int ART = 3;
+
+    /** 0 bold, 1 serif, 2 handwriting, 3 mono, 4 condensed, 5 thin. */
+    public int font = 0;
 
     /** Let the user put the same sticker on every clip at once. */
     public boolean allClips = false;
@@ -46,6 +51,7 @@ public class Overlay {
         o.put("x", x);
         o.put("y", y);
         o.put("size", size);
+        o.put("font", font);
         return o;
     }
 
@@ -55,6 +61,7 @@ public class Overlay {
                 (float) o.optDouble("x", 0.5), (float) o.optDouble("y", 0.8),
                 (float) o.optDouble("size", 0.06));
         ov.glow = o.optBoolean("glow", false);
+        ov.font = o.optInt("font", 0);
         return ov;
     }
 }

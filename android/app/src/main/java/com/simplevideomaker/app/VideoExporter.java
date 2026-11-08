@@ -38,8 +38,7 @@ public final class VideoExporter {
 
     public static final int FPS = 30;
     private static final long FRAME_US = 1000000L / FPS;
-    private static final int W = FrameRenderer.OUT_W;
-    private static final int H = FrameRenderer.OUT_H;
+    /* output size comes from FrameRenderer (project settings) */
     private static final int MAX_FRAMES = 30 * 60 * 5;
     private static final long TRANSITION_US = 500000L; // half a second
 
@@ -74,6 +73,8 @@ public final class VideoExporter {
             throw new IOException("video is too long for one movie");
         }
 
+        int W = FrameRenderer.OUT_W;
+        int H = FrameRenderer.OUT_H;
         Bitmap frame = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888);
         Bitmap scratch = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888);
         Bitmap snapshot = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888);
@@ -178,6 +179,7 @@ public final class VideoExporter {
         if (frameCount(project.clips) > MAX_FRAMES) {
             throw new IOException("video is too long for one movie");
         }
+        FrameRenderer.setOutputSize(project.outWidth, project.outHeight);
         long total = totalUs(project.clips);
 
         AudioMixer mixer = null;
@@ -192,7 +194,9 @@ public final class VideoExporter {
             passthrough = PassthroughAudio.collect(ctx, project.clips);
         }
 
-        Encoder encoder = new Encoder(outFile, mixer, passthrough, total);
+        Encoder encoder = new Encoder(outFile, mixer, passthrough, total,
+                FrameRenderer.OUT_W, FrameRenderer.OUT_H,
+                Math.max(1000000, project.bitrate));
         encoder.start();
         try {
             renderFrames(ctx, project.clips, new FrameSink() {
@@ -236,6 +240,9 @@ public final class VideoExporter {
         private final AudioMixer mixer;
         private final PassthroughAudio passthrough;
         private final long totalUs;
+        private final int width;
+        private final int height;
+        private final int bitrate;
 
         private MediaCodec codec;
         private MediaMuxer muxer;
@@ -245,11 +252,15 @@ public final class VideoExporter {
         private long lastPtsUs;
         private final MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
 
-        Encoder(File outFile, AudioMixer mixer, PassthroughAudio passthrough, long totalUs) {
+        Encoder(File outFile, AudioMixer mixer, PassthroughAudio passthrough, long totalUs,
+                int width, int height, int bitrate) {
             this.outFile = outFile;
             this.mixer = mixer;
             this.passthrough = passthrough;
             this.totalUs = totalUs;
+            this.width = width;
+            this.height = height;
+            this.bitrate = bitrate;
         }
 
         void start() throws IOException {
@@ -262,9 +273,9 @@ public final class VideoExporter {
             for (int colorFormat : formats) {
                 try {
                     MediaFormat fmt = MediaFormat.createVideoFormat(
-                            MediaFormat.MIMETYPE_VIDEO_AVC, W, H);
+                            MediaFormat.MIMETYPE_VIDEO_AVC, width, height);
                     fmt.setInteger(MediaFormat.KEY_COLOR_FORMAT, colorFormat);
-                    fmt.setInteger(MediaFormat.KEY_BIT_RATE, 6000000);
+                    fmt.setInteger(MediaFormat.KEY_BIT_RATE, bitrate);
                     fmt.setInteger(MediaFormat.KEY_FRAME_RATE, FPS);
                     fmt.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1);
                     codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC);
@@ -303,7 +314,7 @@ public final class VideoExporter {
                         }
                     } catch (Throwable ignored) {
                     }
-                    codec.queueInputBuffer(inIndex, 0, W * H * 3 / 2, ptsUs, 0);
+                    codec.queueInputBuffer(inIndex, 0, width * height * 3 / 2, ptsUs, 0);
                     lastPtsUs = ptsUs;
                     drain(false);
                     return true;
@@ -461,13 +472,13 @@ public final class VideoExporter {
             int vRow = planes[2].getRowStride();
             int vPixel = planes[2].getPixelStride();
 
-            int[] row = new int[W];
-            for (int y = 0; y < H; y++) {
-                bitmap.getPixels(row, 0, W, 0, y, W, 1);
+            int[] row = new int[width];
+            for (int y = 0; y < height; y++) {
+                bitmap.getPixels(row, 0, width, 0, y, width, 1);
                 int yOffset = y * yRow;
                 int uvOffset = (y / 2) * uRow;
                 int vvOffset = (y / 2) * vRow;
-                for (int x = 0; x < W; x++) {
+                for (int x = 0; x < width; x++) {
                     int c = row[x];
                     int r = (c >> 16) & 0xFF;
                     int g = (c >> 8) & 0xFF;
@@ -623,7 +634,9 @@ public final class VideoExporter {
         private long nextPts;
         private final MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
         private int[] pixels = new int[0];
-        private static final int MAX_SIDE = 960;
+        private static int maxSide() {
+            return Math.max(960, FrameRenderer.OUT_H);
+        }
 
         public VideoReader(Context ctx, Clip clip) throws IOException {
             this.clip = clip;
@@ -736,8 +749,9 @@ public final class VideoExporter {
         private Bitmap nextBitmap(int srcW, int srcH) {
             float scale = 1f;
             int longest = Math.max(srcW, srcH);
-            if (longest > MAX_SIDE) {
-                scale = (float) MAX_SIDE / longest;
+            int limit = maxSide();
+            if (longest > limit) {
+                scale = (float) limit / longest;
             }
             int w = Math.max(2, Math.round(srcW * scale));
             int h = Math.max(2, Math.round(srcH * scale));

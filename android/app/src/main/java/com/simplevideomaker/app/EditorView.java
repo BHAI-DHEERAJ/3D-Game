@@ -26,6 +26,8 @@ public class EditorView extends View {
     private float dragDy;
 
     private final RectF bounds = new RectF();
+    private float pinchStart = 0f;
+    private float pinchSize = 0f;
 
     public EditorView(Context context) {
         super(context);
@@ -68,6 +70,12 @@ public class EditorView extends View {
         canvas.restore();
     }
 
+    private float spacing(MotionEvent e) {
+        float dx = e.getX(0) - e.getX(1);
+        float dy = e.getY(0) - e.getY(1);
+        return (float) Math.hypot(dx, dy);
+    }
+
     @Override
     public boolean onTouchEvent(MotionEvent e) {
         if (clip == null) {
@@ -75,6 +83,24 @@ public class EditorView extends View {
         }
         float fx = (e.getX() - dx) / scale;
         float fy = (e.getY() - dy) / scale;
+
+        if (e.getPointerCount() >= 2 && selected != null) {
+            float d = spacing(e);
+            switch (e.getActionMasked()) {
+                case MotionEvent.ACTION_POINTER_DOWN:
+                case MotionEvent.ACTION_POINTER_UP:
+                    pinchStart = d;
+                    pinchSize = selected.size;
+                    return true;
+                case MotionEvent.ACTION_MOVE:
+                    if (pinchStart > 4f) {
+                        selected.size = Math.max(0.02f,
+                                Math.min(0.95f, pinchSize * (d / pinchStart)));
+                        invalidate();
+                    }
+                    return true;
+            }
+        }
 
         switch (e.getActionMasked()) {
             case MotionEvent.ACTION_DOWN: {

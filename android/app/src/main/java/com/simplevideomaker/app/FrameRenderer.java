@@ -19,12 +19,59 @@ import android.graphics.Typeface;
  */
 public final class FrameRenderer {
 
-    public static final int OUT_W = 720;
-    public static final int OUT_H = 1280;
+    /** Output size of the movie — changed by the project settings. */
+    public static int OUT_W = 720;
+    public static int OUT_H = 1280;
+
+    public static void setOutputSize(int width, int height) {
+        OUT_W = Math.max(2, (Math.max(2, width) / 2) * 2);
+        OUT_H = Math.max(2, (Math.max(2, height) / 2) * 2);
+    }
 
     private static final Paint P = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final Paint TEXT = new Paint(Paint.ANTI_ALIAS_FLAG);
     private static final Typeface BOLD = Typeface.create(Typeface.DEFAULT, Typeface.BOLD);
+    private static final Typeface[] FONTS = new Typeface[6];
+    private static final String[] FONT_LABELS = {"Bold", "Serif", "Hand", "Mono", "Narrow", "Thin"};
+
+    public static String fontName(int id) {
+        return FONT_LABELS[Math.max(0, Math.min(FONT_LABELS.length - 1, id))];
+    }
+
+    public static Typeface typefaceFor(int id) {
+        int i = Math.max(0, Math.min(FONTS.length - 1, id));
+        if (FONTS[i] == null) {
+            String family;
+            switch (i) {
+                case 1:
+                    family = "serif";
+                    break;
+                case 2:
+                    family = "casual";
+                    break;
+                case 3:
+                    family = "monospace";
+                    break;
+                case 4:
+                    family = "sans-serif-condensed";
+                    break;
+                case 5:
+                    family = "sans-serif-light";
+                    break;
+                default:
+                    family = "sans-serif-black";
+                    break;
+            }
+            Typeface tf;
+            try {
+                tf = Typeface.create(family, i == 5 ? Typeface.NORMAL : Typeface.BOLD);
+            } catch (Throwable t) {
+                tf = Typeface.create(Typeface.DEFAULT, Typeface.BOLD);
+            }
+            FONTS[i] = tf;
+        }
+        return FONTS[i];
+    }
     private static final Path CLIP_PATH = new Path();
     private static final RectF R = new RectF();
 
@@ -295,10 +342,15 @@ public final class FrameRenderer {
         float x = o.x * OUT_W;
         float y = o.y * OUT_H;
 
+        if (o.type == Overlay.ART) {
+            StickerArt.draw(c, o.text, x, y, size, o.glow);
+            return;
+        }
+
         TEXT.reset();
         TEXT.setAntiAlias(true);
         TEXT.setTextAlign(Paint.Align.CENTER);
-        TEXT.setTypeface(BOLD);
+        TEXT.setTypeface(o.type == Overlay.EMOJI ? Typeface.DEFAULT : typefaceFor(o.font));
         TEXT.setTextSize(size);
 
         float base = baseline(y);
@@ -389,9 +441,12 @@ public final class FrameRenderer {
         if (o.type == Overlay.EMOJI) {
             return new RectF(x - size * 0.58f, y - size * 0.58f, x + size * 0.58f, y + size * 0.58f);
         }
+        if (o.type == Overlay.ART) {
+            return new RectF(x - size * 0.55f, y - size * 0.55f, x + size * 0.55f, y + size * 0.55f);
+        }
         TEXT.reset();
         TEXT.setAntiAlias(true);
-        TEXT.setTypeface(BOLD);
+        TEXT.setTypeface(typefaceFor(o.font));
         TEXT.setTextSize(size);
         float tw = TEXT.measureText(o.text == null ? "" : o.text);
         if (o.type == Overlay.BADGE) {
