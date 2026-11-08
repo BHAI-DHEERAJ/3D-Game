@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>Hide &amp; Hunt 3D — Hunters vs Props</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🪑</text></svg>" />
+<link rel="stylesheet" href="/style.css" />
+<script src="/socket.io/socket.io.js"></script>
+<script type="importmap">
+{ "imports": { "three": "/vendor/three.module.js" } }
+</script>
+</head>
+<body>
+<canvas id="scene"></canvas>
+
+<div id="nameplates"></div>
+
+<!-- ------------------------------------------------------------------ HUD -->
+<div id="hud" class="hidden">
+  <div id="topbar">
+    <div class="team props">
+      <span class="label">PROPS</span>
+      <span id="propScore" class="score">0</span>
+    </div>
+    <div id="phase">
+      <div id="phaseName">—</div>
+      <div id="timer">0:00</div>
+    </div>
+    <div class="team hunters">
+      <span class="label">HUNTERS</span>
+      <span id="hunterScore" class="score">0</span>
+    </div>
+  </div>
+
+  <div id="crosshair"><span class="ch l"></span><span class="ch r"></span><span class="ch u"></span><span class="ch d"></span><span class="dot"></span></div>
+  <div id="hitmarker"></div>
+  <div id="prompt" class="hidden"></div>
+  <div id="musicWarn" class="hidden">♫ &nbsp;a prop is making noise nearby</div>
+
+  <div id="bottomLeft">
+    <div id="roleTag" class="prop">PROP</div>
+    <div id="hpRow">
+      <div id="hpBar"><div id="hpFill"></div></div>
+      <span id="hpText">100</span>
+    </div>
+  </div>
+
+  <div id="bottomRight">
+    <div id="ammo">45<span class="mag"> / 45</span></div>
+    <div id="reloadHint" class="hidden">press R to reload</div>
+  </div>
+
+  <div id="abilities">
+    <div class="ab" id="abPrimary"><div class="key">G</div><div class="nm">Grenade</div><div class="cd"></div></div>
+    <div class="ab" id="abSecondary"><div class="key">F</div><div class="nm">Medkit</div><div class="cd"></div></div>
+  </div>
+
+  <div id="ping"></div>
+  <div id="feed"></div>
+  <div id="killfeed"></div>
+  <div id="damage"></div>
+
+  <div id="scoreboard" class="hidden">
+    <h3>Scoreboard</h3>
+    <table>
+      <thead><tr><th>#</th><th>Player</th><th>Team</th><th>Status</th><th>Caught</th><th>Score</th></tr></thead>
+      <tbody id="scoreBody"></tbody>
+    </table>
+    <p class="hint">Props earn points every second they stay alive. Catch one and you take their whole stash.</p>
+  </div>
+
+  <div id="deathOverlay" class="hidden"><div id="deathText"></div></div>
+  <div id="roleBanner" class="hidden"></div>
+  <div id="lockHint" class="hidden">click to capture mouse</div>
+</div>
+
+<!-- ----------------------------------------------------------------- MENU -->
+<div id="menu">
+  <div class="card">
+    <h1>HIDE <span class="amp">&amp;</span> HUNT <span class="v">3D</span></h1>
+    <p class="tag">Hunters vs Props — a 3D prop-hunt party game in your browser</p>
+
+    <div class="row">
+      <label for="nameInput">Name</label>
+      <input id="nameInput" maxlength="16" placeholder="Player" autocomplete="off" />
+    </div>
+    <div class="row">
+      <label for="roomInput">Room</label>
+      <input id="roomInput" maxlength="16" value="main" autocomplete="off" />
+    </div>
+    <div class="row">
+      <label for="botRange">Bots</label>
+      <input id="botRange" type="range" min="1" max="7" value="5" />
+      <span id="botCount">5</span>
+    </div>
+
+    <button id="playBtn">PLAY</button>
+
+    <div class="cols">
+      <div>
+        <h4>How it works</h4>
+        <ul class="small">
+          <li><b>10s hide phase</b> — hunters are locked in the hallway</li>
+          <li>Aim at an object and press <b>E</b> to become it</li>
+          <li>Hunters shoot suspects — <b>hitting real furniture costs 5 HP</b></li>
+          <li>Every ~20s your prop <b>blasts a tune</b> and gives itself away. Move!</li>
+          <li>Props score for every second alive; hunters win by catching them all</li>
+        </ul>
+      </div>
+      <div>
+        <h4>Controls</h4>
+        <ul class="small">
+          <li><b>WASD</b> move · <b>Shift</b> sprint · <b>Space</b> jump</li>
+          <li><b>Mouse</b> look · <b>LMB</b> shoot / morph</li>
+          <li><b>E</b> morph · <b>Q</b> / wheel shuffle disguise</li>
+          <li><b>F</b> medkit (props) · <b>G</b> grenade (hunters)</li>
+          <li><b>R</b> reload · <b>Tab</b> scoreboard · <b>Esc</b> mouse</li>
+        </ul>
+      </div>
+    </div>
+    <p class="tip">Tip: open this page in a second tab or share the room name with a friend to play together. Bots fill the rest of the lobby.</p>
+  </div>
+</div>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>

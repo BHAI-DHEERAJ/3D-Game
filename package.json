@@ -1,0 +1,25 @@
+{
+  "name": "hide-and-hunt-3d",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "3D multiplayer prop-hunt game (Hunters vs Props) - Three.js client + Node.js Socket.IO server",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "test": "node test/client-smoke.js",
+    "test:net": "node test/smoke.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5",
+    "three": "^0.169.0"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.4"
+  }
+}
