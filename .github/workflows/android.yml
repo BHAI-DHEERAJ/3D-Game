@@ -89,14 +89,14 @@ jobs:
       - name: Collect APK
         run: |
           mkdir -p out
-          cp android/app/build/outputs/apk/release/*.apk out/SimpleVideoMaker-1.0.apk
+          cp android/app/build/outputs/apk/release/*.apk out/SimpleVideoMaker-1.1.apk
           ls -lh out
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: SimpleVideoMaker-apk
-          path: out/SimpleVideoMaker-1.0.apk
+          path: out/SimpleVideoMaker-1.1.apk
           retention-days: 90
 
       - name: Upload signing keystore (keep it, so future updates install over this one)
@@ -112,9 +112,9 @@ jobs:
         run: |
           NOTES="Ready-to-install APK. Download, send it to the phone, tap to install."
           if gh release view apk-latest > /dev/null 2>&1; then
-            gh release upload apk-latest out/SimpleVideoMaker-1.0.apk --clobber
+            gh release upload apk-latest out/SimpleVideoMaker-1.1.apk --clobber
           else
-            gh release create apk-latest out/SimpleVideoMaker-1.0.apk \
+            gh release create apk-latest out/SimpleVideoMaker-1.1.apk \
               --title "Simple Video Maker — installable APK" \
               --notes "$NOTES" --latest
           fi
@@ -124,7 +124,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           mkdir -p public
-          cp out/SimpleVideoMaker-1.0.apk public/SimpleVideoMaker-1.0.apk
-          git add -f public/SimpleVideoMaker-1.0.apk
+          cp out/SimpleVideoMaker-1.1.apk public/SimpleVideoMaker-1.1.apk
+          git add -f public/SimpleVideoMaker-1.1.apk
           git commit -m "build: refresh installable APK [skip ci]" || echo "APK unchanged"
           git push origin "HEAD:${{ github.ref_name }}"

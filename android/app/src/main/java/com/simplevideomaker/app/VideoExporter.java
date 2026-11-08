@@ -635,7 +635,8 @@ public final class VideoExporter {
         private final MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
         private int[] pixels = new int[0];
         private static int maxSide() {
-            return Math.max(960, FrameRenderer.OUT_H);
+            // decode a bit above the output size, but never more than 1440 px (memory)
+            return Math.min(1440, Math.max(960, FrameRenderer.OUT_H));
         }
 
         public VideoReader(Context ctx, Clip clip) throws IOException {

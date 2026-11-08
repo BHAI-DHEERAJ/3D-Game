@@ -13,8 +13,8 @@ The APK is built by **GitHub Actions** on every change.
 
 ## Install
 
-1. **[Releases](../../releases) → `apk-latest` → `SimpleVideoMaker-1.0.apk`**
-   (also committed at `public/SimpleVideoMaker-1.0.apk`, and in *Actions → latest run → Artifacts*).
+1. **[Releases](../../releases) → `apk-latest` → `SimpleVideoMaker-1.1.apk`**
+   (also committed at `public/SimpleVideoMaker-1.1.apk`, and in *Actions → latest run → Artifacts*).
 2. Send the file to the phone (WhatsApp / Drive / USB), tap it, allow *"Install unknown apps"*.
 3. Open **Simple Video Maker** from the app drawer. Works offline, forever.
 
@@ -101,7 +101,7 @@ tools/make_icons.py      regenerates every launcher icon (pure Python, no deps)
 
 * **Cloud:** Actions → *Build Android APK* → *Run workflow* (or just push to the branch).
   Produces the `SimpleVideoMaker-apk` artifact, a `signing-keystore`, a release, and refreshes
-  `public/SimpleVideoMaker-1.0.apk`.
+  `public/SimpleVideoMaker-1.1.apk`.
 * **Local:** Android Studio (open `android/`), or:
 
 ```bash
