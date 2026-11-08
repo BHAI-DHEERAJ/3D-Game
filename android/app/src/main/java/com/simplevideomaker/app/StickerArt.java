@@ -580,10 +580,15 @@ public final class StickerArt {
         P.setStyle(Paint.Style.FILL);
         P.setColor(Color.WHITE);
         P.setFakeBoldText(true);
-        P.setTextAlign(Paint.Align.LEFT);
-        P.setTextSize(17f);
-        c.drawText("SUBSCRIBE", 40, 56, P);
-        P.setTextSize(17f);
+        P.setTextAlign(Paint.Align.CENTER);
+        float textSize = 11f;
+        // shrink until the word fits inside the pill
+        while (textSize > 6f && P.measureText("SUBSCRIBE") > 56f) {
+            textSize -= 0.5f;
+            P.setTextSize(textSize);
+        }
+        P.setTextSize(textSize);
+        c.drawText("SUBSCRIBE", 67, 54, P);
         P.setFakeBoldText(false);
         P.setTextAlign(Paint.Align.LEFT);
     }
