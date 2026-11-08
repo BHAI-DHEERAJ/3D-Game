@@ -15,7 +15,8 @@ public final class Scrubber {
         this.context = context;
     }
 
-    public Bitmap frameFor(Clip target, long sourceUs) {
+    /** One request at a time: MediaCodec readers are not thread safe. */
+    public synchronized Bitmap frameFor(Clip target, long sourceUs) {
         if (target == null) {
             return null;
         }
@@ -42,7 +43,7 @@ public final class Scrubber {
         }
     }
 
-    public void release() {
+    public synchronized void release() {
         if (reader != null) {
             try {
                 reader.release();

@@ -316,7 +316,9 @@ public class TimelineView extends View {
                 downY = e.getY();
                 dragging = false;
                 tapCandidate = clipAt(e.getX(), e.getY());
-                getParent().requestDisallowInterceptTouchEvent(true);
+                if (getParent() != null) {
+                    getParent().requestDisallowInterceptTouchEvent(true);
+                }
                 return true;
 
             case MotionEvent.ACTION_MOVE:

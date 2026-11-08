@@ -62,17 +62,28 @@ public class EditorView extends View {
         return selected;
     }
 
-    @Override
-    protected void onSizeChanged(int w, int h, int ow, int oh) {
-        super.onSizeChanged(w, h, ow, oh);
+    /** The project size can change while the preview stays the same size — fit every frame. */
+    private void fit() {
+        int w = getWidth();
+        int h = getHeight();
+        if (w <= 0 || h <= 0) {
+            return;
+        }
         scale = Math.min((float) w / FrameRenderer.OUT_W, (float) h / FrameRenderer.OUT_H);
         dx = (w - FrameRenderer.OUT_W * scale) / 2f;
         dy = (h - FrameRenderer.OUT_H * scale) / 2f;
     }
 
     @Override
+    protected void onSizeChanged(int w, int h, int ow, int oh) {
+        super.onSizeChanged(w, h, ow, oh);
+        fit();
+    }
+
+    @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
+        fit();
         canvas.save();
         canvas.translate(dx, dy);
         canvas.scale(scale, scale);

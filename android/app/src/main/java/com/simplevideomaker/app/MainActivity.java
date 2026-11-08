@@ -81,6 +81,8 @@ public class MainActivity extends Activity {
     private TimelineView timeline;
     private long playheadMs;
     private int frameToken;
+    private volatile boolean frameBusy;
+    private long pendingFrame = -1;
     private Scrubber scrubber;
     private final android.os.Handler scrubHandler = new android.os.Handler(android.os.Looper.getMainLooper());
     private LinearLayout overlayTools;
@@ -954,16 +956,28 @@ public class MainActivity extends Activity {
         long local = localTimeIn(index, timeMs);
         long sourceUs = (clip.startMs + Math.round(local * clip.speed)) * 1000L;
         final int token = ++frameToken;
+        pendingFrame = -1;
         if (!clip.isVideo()) {
             preview.setFrame(clip, clip.image);
             return;
         }
         final Clip target = clip;
+        if (frameBusy) {
+            pendingFrame = timeMs;
+            return;
+        }
+        frameBusy = true;
         new Thread(() -> {
             Bitmap b = scrubber == null ? null : scrubber.frameFor(target, sourceUs);
             runOnUiThread(() -> {
+                frameBusy = false;
                 if (token == frameToken) {
                     preview.setFrame(target, b);
+                }
+                if (pendingFrame >= 0) {
+                    long next = pendingFrame;
+                    pendingFrame = -1;
+                    renderAt(next);
                 }
             });
         }).start();
