@@ -46,13 +46,6 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 
-    // The web app lives at the repository root in /app — ship it as-is inside the APK.
-    sourceSets {
-        main {
-            assets.srcDirs += ["$rootDir/../app"]
-        }
-    }
-
     lint {
         abortOnError false
         checkReleaseBuilds false

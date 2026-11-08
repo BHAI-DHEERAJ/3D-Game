@@ -1,67 +1,77 @@
 # Simple Video Maker
 
-A dead-simple photo & video editor made for a grandmother's phone:
-**add photos/videos → add text or stickers (like "SUBSCRIBE to my YouTube") → press "Make Video"**.
+A dead-simple, **fully native** Android photo & video editor made for a grandmother's phone:
 
-Built as a mobile web app (`app/`) and packaged into a real Android APK with a tiny native
-WebView wrapper (`android/`).
+> **add photos/videos → add text or stickers (like "SUBSCRIBE to my YouTube") → press "Make Video"**
 
-## Give it to Grandma (easiest way)
+Everything happens on the phone: no WebView, no ffmpeg, no internet, no account.
+The app decodes the clips with `MediaCodec`, draws each frame with `Canvas` (pictures, text,
+emoji / "SUBSCRIBE" badges), re-encodes with `MediaCodec` H.264 and writes the MP4 with
+`MediaMuxer` — original video sound is copied into the movie.
 
-1. Download **`SimpleVideoMaker-1.0.apk`** from this repo's
-   [Actions](../../actions) → latest "Build Android APK" run → *Artifacts*.
-2. Send that file to her phone (WhatsApp, USB, Google Drive…).
-3. On the phone, tap the APK → *Install* → if asked, allow *"Install unknown apps"* for
-   whichever app you opened it from.
+APK builds are produced by **GitHub Actions** (`.github/workflows/android.yml`).
+
+## Install it on Grandma's phone
+
+1. Open **[Releases](../../releases)** and download `SimpleVideoMaker-1.0.apk`
+   (or grab `public/SimpleVideoMaker-1.0.apk` from the repo, or the *Actions* → latest run → Artifacts).
+2. Send the file to her phone (WhatsApp / Drive / USB).
+3. Tap the APK → *Install* → allow *"Install unknown apps"* if Android asks.
 4. Open **Simple Video Maker** from the app drawer.
 
-The finished video is saved to **Gallery → Movies → SimpleVideoMaker**, and the
-"Share" button can send it straight to WhatsApp.
+Finished movies are saved to **Gallery → Movies → SimpleVideoMaker**, and the
+**Share** button sends them straight to WhatsApp. **Watch** plays the result.
 
-## Or install it without an APK (no install needed)
+## What she can do
 
-Serve the `app/` folder over HTTPS (any static host, e.g. GitHub Pages) and open it in
-Chrome on the phone → menu → **Add to Home screen**. It then behaves like an app and
-works offline.
-
-## Using the app
-
-| Step | What to do |
+| Button | What it does |
 |---|---|
-| 1 | **Add** → pick photos and videos from the gallery (multi-select works) |
-| 2 | Tap a thumbnail, then **Text** (or a quick phrase) / **Sticker** (YouTube subscribe badge, ❤️, 🙏, 🕉️ …) |
-| 3 | Drag the text/sticker on the preview to place it, use **Bigger / Smaller** |
-| 4 | **Preview** to watch, **Make Video** to save |
+| **➕ Add** | pick many photos and videos at once from the gallery |
+| **🔤 Text** | type anything, or tap a ready phrase ("Subscribe to my YouTube ❤️", "नमस्ते 🙏", …) |
+| **😊 Sticker** | `SUBSCRIBE`, `LIKE & SHARE`, `FOLLOW ME`, `THANK YOU` badges + ❤️ 😊 👍 ⭐ 🎉 🔔 🌸 🙏 👵 🕉️ 💐 🔥 |
+| drag on preview | move the text/sticker exactly where she wants it |
+| **➕ / ➖** | make the selected text/sticker bigger or smaller |
+| **⏱️** | how long a photo stays on screen (2s / 3s / 5s / 8s) |
+| **⬅️ ➡️** | reorder clips |
+| **🎉 Make Video** | renders a real MP4 (720×1280, 30 fps) into the Gallery |
+| **हिं / EN** | switches the whole app between Hindi and English |
 
-Extras: `⬅️ ➡️` reorder clips, `⏱️` changes how long a photo stays on screen,
-the `हिं / EN` button switches the whole app to Hindi.
+Notes: the movie is portrait 9:16 (good for WhatsApp status / YouTube Shorts); clips longer
+than 60 s are trimmed to their first minute; sound comes from the video clips.
 
-## Building the APK yourself
+## Building the APK (GitHub CI)
 
-* **Cloud (what produced the APK here):** GitHub Actions workflow
-  `.github/workflows/android.yml` builds a signed release APK on every push to `main`,
-  or manually from the *Actions* tab → *Build Android APK* → *Run workflow*.
-* **Locally:** install JDK 17 + Android SDK 34, then
+Any push that touches `android/` or the workflow, or **Actions → Build Android APK → Run workflow**,
+produces a signed APK:
 
-  ```bash
-  cd android
-  gradle assembleRelease      # or: gradle assembleDebug
-  # APK -> android/app/build/outputs/apk/release/
-  ```
+* `SimpleVideoMaker-apk` — the APK artifact
+* `signing-keystore` — the key used to sign it (keep it if you want future builds to install
+  as an *update* instead of needing an uninstall)
+* a **GitHub Release** named `apk-latest` with the APK attached
+* `public/SimpleVideoMaker-1.0.apk`, committed back to the branch so the file is easy to grab
 
-  (Opening the `android/` folder in Android Studio also works.)
+The runner does: JDK 17 → Android SDK 34 → `gradle assembleRelease` in `android/`.
 
-The APK is just a 100 % offline WebView around `app/` — the web app folder is embedded
-as assets straight from `app/`, so there is only ever one copy of the code to edit.
+Locally (Android Studio or CLI):
 
-## Repository layout
-
-```
-app/                      the editor itself (HTML/CSS/JS, no dependencies, works offline)
-android/                  native wrapper: gallery picker + "save to Gallery" + Share
-tools/make_icons.py       regenerates every icon (pure Python, no deps)
-.github/workflows/        cloud APK build
+```bash
+cd android
+gradle assembleRelease        # APK -> android/app/build/outputs/apk/release/
 ```
 
-> The old `3D-Game` scaffold contained no game code, only a one-line README, so it was
-> simply replaced by this project.
+## Project layout
+
+```
+android/app/src/main/java/com/simplevideomaker/app/
+    MainActivity.java    native UI: timeline, big buttons, text/sticker dialogs, export flow
+    EditorView.java      the live preview; drag text/stickers with your finger
+    FrameRenderer.java   draws one 720x1280 frame (picture + text + stickers) — shared with the encoder
+    VideoExporter.java   MediaCodec decode -> Canvas composite -> H.264 encode -> MediaMuxer
+    MediaSaver.java      writes into the Gallery, Share / Watch intents
+    Clip.java  Overlay.java
+tools/make_icons.py      regenerates the launcher icons (pure Python, no deps)
+.github/workflows/       the APK build
+```
+
+> The old `3D-Game` scaffold contained no code (a one-line README only), so it was replaced by
+> this project.
