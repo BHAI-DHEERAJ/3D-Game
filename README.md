@@ -1,77 +1,109 @@
-# Simple Video Maker
+# Simple Video Maker 🎬👵
 
-A dead-simple, **fully native** Android photo & video editor made for a grandmother's phone:
+A **fully native** Android video editor, made simple enough for a grandmother — but with the
+tools everyone actually wants: **drafts, split, speed, transitions, filters, music, stickers,
+text with glow**.
 
-> **add photos/videos → add text or stickers (like "SUBSCRIBE to my YouTube") → press "Make Video"**
+> No WebView. No ffmpeg. No internet, no account. Everything is rendered and encoded on the phone
+> with `MediaCodec` → `Canvas` → `MediaCodec` (H.264) → `MediaMuxer`.
 
-Everything happens on the phone: no WebView, no ffmpeg, no internet, no account.
-The app decodes the clips with `MediaCodec`, draws each frame with `Canvas` (pictures, text,
-emoji / "SUBSCRIBE" badges), re-encodes with `MediaCodec` H.264 and writes the MP4 with
-`MediaMuxer` — original video sound is copied into the movie.
+The APK is built by **GitHub Actions** on every change.
 
-APK builds are produced by **GitHub Actions** (`.github/workflows/android.yml`).
+---
 
-## Install it on Grandma's phone
+## Install
 
-1. Open **[Releases](../../releases)** and download `SimpleVideoMaker-1.0.apk`
-   (or grab `public/SimpleVideoMaker-1.0.apk` from the repo, or the *Actions* → latest run → Artifacts).
-2. Send the file to her phone (WhatsApp / Drive / USB).
-3. Tap the APK → *Install* → allow *"Install unknown apps"* if Android asks.
-4. Open **Simple Video Maker** from the app drawer.
+1. **[Releases](../../releases) → `apk-latest` → `SimpleVideoMaker-1.0.apk`**
+   (also committed at `public/SimpleVideoMaker-1.0.apk`, and in *Actions → latest run → Artifacts*).
+2. Send the file to the phone (WhatsApp / Drive / USB), tap it, allow *"Install unknown apps"*.
+3. Open **Simple Video Maker** from the app drawer. Works offline, forever.
 
-Finished movies are saved to **Gallery → Movies → SimpleVideoMaker**, and the
-**Share** button sends them straight to WhatsApp. **Watch** plays the result.
+Movies are saved to **Gallery → Movies → SimpleVideoMaker**; the result screen offers
+**Watch** and **Share** (WhatsApp, etc.).
 
-## What she can do
+---
 
-| Button | What it does |
+## What's inside
+
+### 📁 Projects / Drafts
+* Home screen lists every video as a draft card with its thumbnail, clip count and length.
+* Everything auto-saves as you edit — close the app, come back later, keep going.
+* **Rename**, **Duplicate**, **Delete** (long-press a draft) — photos always stay safe in the gallery.
+* Media access is remembered (`ACTION_OPEN_DOCUMENT` + persistable URIs), so drafts survive reboots.
+
+### ✂️ The editor
+| Tool | What it does |
 |---|---|
-| **➕ Add** | pick many photos and videos at once from the gallery |
-| **🔤 Text** | type anything, or tap a ready phrase ("Subscribe to my YouTube ❤️", "नमस्ते 🙏", …) |
-| **😊 Sticker** | `SUBSCRIBE`, `LIKE & SHARE`, `FOLLOW ME`, `THANK YOU` badges + ❤️ 😊 👍 ⭐ 🎉 🔔 🌸 🙏 👵 🕉️ 💐 🔥 |
-| drag on preview | move the text/sticker exactly where she wants it |
-| **➕ / ➖** | make the selected text/sticker bigger or smaller |
-| **⏱️** | how long a photo stays on screen (2s / 3s / 5s / 8s) |
-| **⬅️ ➡️** | reorder clips |
-| **🎉 Make Video** | renders a real MP4 (720×1280, 30 fps) into the Gallery |
-| **हिं / EN** | switches the whole app between Hindi and English |
+| 🔤 **Text** | any words + ready phrases ("Subscribe to my YouTube ❤️", "नमस्ते 🙏"…), 5 colours, **glow** |
+| 😊 **Sticker** | `SUBSCRIBE` / `LIKE & SHARE` / `FOLLOW ME` / `THANK YOU` / `BELL` / `MY VLOG` badges + 30 stickers: 🦋 🌸 🌺 🌻 🌈 ⭐ 🌟 ✨ 💫 🔆 ❤️ 💖 💐 🎀 🎉 🕉️ 🪔 🦚 🍀 🎂 🙏 👵 … |
+| 🎵 **Music** | pick any song from the phone, set its volume — it is looped under the whole movie |
+| ✨ **Effect** | transitions between clips: **Fade, Slide, Zoom, Circle** |
+| 🎨 **Look** | colour filters: **Warm, Cool, Black & White, Vivid, Sepia** |
+| ⏱️ **Duration** | how long a photo stays (2s / 3s / 5s / 8s) |
+| ⏩ **Speed** | video 0.5× (slow), 1×, 1.5×, 2× (fast) |
+| ✂️ **Split** | cut a clip in two, then reorder or restyle each half |
+| ⬅️ ➡️ | reorder clips · 🔀 **Copy** duplicates a clip · 🔊 **Sound** mutes a clip |
+| 👆 drag | move any text/sticker with a finger, ➕/➖ bigger/smaller, ✨ glow |
+| ▶️ **Preview** | watch the real composition (filters, text, transitions) before saving |
+| 🎉 **Make Video** | renders a real **MP4 720×1280, 30 fps** into the Gallery |
+| हिं / EN | the entire app switches between **Hindi and English** |
+| ❓ | a help sheet written for a first-time smartphone user |
 
-Notes: the movie is portrait 9:16 (good for WhatsApp status / YouTube Shorts); clips longer
-than 60 s are trimmed to their first minute; sound comes from the video clips.
+The soundtrack is built by mixing the phone's music with the clips' original sound and
+re-encoding it to AAC (44.1 kHz stereo) — see `AudioMixer.java`.
 
-## Building the APK (GitHub CI)
+---
 
-Any push that touches `android/` or the workflow, or **Actions → Build Android APK → Run workflow**,
-produces a signed APK:
+## How it works
 
-* `SimpleVideoMaker-apk` — the APK artifact
-* `signing-keystore` — the key used to sign it (keep it if you want future builds to install
-  as an *update* instead of needing an uninstall)
-* a **GitHub Release** named `apk-latest` with the APK attached
-* `public/SimpleVideoMaker-1.0.apk`, committed back to the branch so the file is easy to grab
-
-The runner does: JDK 17 → Android SDK 34 → `gradle assembleRelease` in `android/`.
-
-Locally (Android Studio or CLI):
-
-```bash
-cd android
-gradle assembleRelease        # APK -> android/app/build/outputs/apk/release/
 ```
+photos ─┐
+        ├─→ FrameRenderer (Canvas): fit/crop, ken-burns zoom, filter, text, stickers, transitions
+videos ─┘        │
+                 ├─→ preview: frames shown on screen in real time (PreviewPlayer path)
+                 └─→ export: MediaCodec H.264 encoder (COLOR_FormatYUV420Flexible input images)
+                              + AudioMixer (AAC) / passthrough  →  MediaMuxer  →  MP4  →  Gallery
+```
+
+* `VideoExporter.renderFrames()` draws the movie frame by frame; the same code powers the preview
+  and the export, so what she sees is what she gets.
+* Video clips are decoded with `MediaCodec` to `Image` (YUV) → ARGB bitmaps, with rotation handled.
+* Everything streams — a 5-minute movie never loads minutes of audio or video into RAM.
 
 ## Project layout
 
 ```
 android/app/src/main/java/com/simplevideomaker/app/
-    MainActivity.java    native UI: timeline, big buttons, text/sticker dialogs, export flow
-    EditorView.java      the live preview; drag text/stickers with your finger
-    FrameRenderer.java   draws one 720x1280 frame (picture + text + stickers) — shared with the encoder
-    VideoExporter.java   MediaCodec decode -> Canvas composite -> H.264 encode -> MediaMuxer
-    MediaSaver.java      writes into the Gallery, Share / Watch intents
-    Clip.java  Overlay.java
-tools/make_icons.py      regenerates the launcher icons (pure Python, no deps)
-.github/workflows/       the APK build
+    MainActivity.java    native UI: drafts, timeline, dialogs (text/sticker/music/effects), export flow
+    EditorView.java      live preview, drag text/stickers with a finger
+    FrameRenderer.java   draws one 720x1280 frame: media, filters, text, stickers, transitions
+    VideoExporter.java   decode → composite → H.264 encode → mux (also powers the preview)
+    AudioMixer.java      music + clip sound → mix → AAC (streaming, looped music)
+    MediaSaver.java      save into Gallery, Share / Watch intents
+    Project.java  ProjectStore.java  Clip.java  Overlay.java
+tools/make_icons.py      regenerates every launcher icon (pure Python, no deps)
+.github/workflows/android.yml   the APK build (JDK 17 + Android SDK 34 + gradle)
 ```
 
-> The old `3D-Game` scaffold contained no code (a one-line README only), so it was replaced by
-> this project.
+## Building
+
+* **Cloud:** Actions → *Build Android APK* → *Run workflow* (or just push to the branch).
+  Produces the `SimpleVideoMaker-apk` artifact, a `signing-keystore`, a release, and refreshes
+  `public/SimpleVideoMaker-1.0.apk`.
+* **Local:** Android Studio (open `android/`), or:
+
+```bash
+cd android
+gradle assembleRelease     # APK -> android/app/build/outputs/apk/release/
+```
+
+Requirements: `minSdk 24` (Android 7), `targetSdk 34`, portrait only, no third-party libraries.
+
+## Known trade-offs
+
+* Movies are portrait 9:16 (WhatsApp status / Shorts friendly).
+* A clip longer than 60 s is trimmed to its first minute; whole movies are capped at 5 minutes.
+* Muted or sped-up clips keep the music only (their own sound is skipped).
+* Effects apply from the second clip onwards.
+
+> The old `3D-Game` scaffold was empty (a one-line README, no code), so it was replaced by this app.
