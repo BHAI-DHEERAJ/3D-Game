@@ -1005,7 +1005,8 @@ public class MainActivity extends Activity {
     private void filterDialog() {
         Clip c = current();
         if (c == null) {
-            return missingClipsWarning();
+            missingClipsWarning();
+            return;
         }
         String[] labels = {
                 t("None", "कोई नहीं"), t("Warm", "गरम"), t("Cool", "ठंडा"),
@@ -1022,7 +1023,8 @@ public class MainActivity extends Activity {
     private void transitionDialog() {
         Clip c = current();
         if (c == null) {
-            return missingClipsWarning();
+            missingClipsWarning();
+            return;
         }
         if (sel == 0) {
             toast(t("Effects work from the second clip on",
@@ -1044,7 +1046,8 @@ public class MainActivity extends Activity {
     private void speedDialog() {
         Clip c = current();
         if (c == null) {
-            return missingClipsWarning();
+            missingClipsWarning();
+            return;
         }
         if (!c.isVideo()) {
             return changeDuration();
@@ -1164,7 +1167,8 @@ public class MainActivity extends Activity {
     private void addText() {
         final Clip c = current();
         if (c == null) {
-            return missingClipsWarning();
+            missingClipsWarning();
+            return;
         }
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
@@ -1290,7 +1294,8 @@ public class MainActivity extends Activity {
     private void addSticker() {
         final Clip c = current();
         if (c == null) {
-            return missingClipsWarning();
+            missingClipsWarning();
+            return;
         }
         final AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle(t("Add a sticker", "स्टिकर लगाएं"))
@@ -1640,7 +1645,8 @@ public class MainActivity extends Activity {
             return;
         }
         if (project == null || project.clips.isEmpty()) {
-            return missingClipsWarning();
+            missingClipsWarning();
+            return;
         }
         busy = true;
         final boolean[] cancelled = {false};
@@ -1722,7 +1728,8 @@ public class MainActivity extends Activity {
             return;
         }
         if (project == null || project.clips.isEmpty()) {
-            return missingClipsWarning();
+            missingClipsWarning();
+            return;
         }
         if (project.totalMs() > 5 * 60 * 1000L) {
             toast(t("Please keep the video under 5 minutes", "वीडियो 5 मिनट से छोटा रखें"));
