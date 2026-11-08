@@ -474,8 +474,9 @@ public final class StickerArt {
         for (int i = 0; i < colors.length; i++) {
             P.setColor(colors[i]);
             P.setShadowLayer(i == 0 ? 4f : 0f, 0, 0, 0x33000000);
-            float inset = 8 + i * 7f;
-            R.set(inset, inset + 12, 100 - inset, 100 - inset + 12);
+            float radius = 42 - i * 7f;
+            // arcs sit on the ground line so the clouds close them off
+            R.set(50 - radius, 88 - radius, 50 + radius, 88 + radius);
             c.drawArc(R, 180, 180, false, P);
         }
         P.setShadowLayer(0, 0, 0, 0);

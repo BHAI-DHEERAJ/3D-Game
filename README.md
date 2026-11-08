@@ -34,8 +34,8 @@ Movies are saved to **Gallery → Movies → SimpleVideoMaker**; the result scre
 ### ✂️ The editor
 | Tool | What it does |
 |---|---|
-| 🔤 **Text** | any words + ready phrases ("Subscribe to my YouTube ❤️", "नमस्ते 🙏"…), 5 colours, **glow** |
-| 😊 **Sticker** | `SUBSCRIBE` / `LIKE & SHARE` / `FOLLOW ME` / `THANK YOU` / `BELL` / `MY VLOG` badges + 30 stickers: 🦋 🌸 🌺 🌻 🌈 ⭐ 🌟 ✨ 💫 🔆 ❤️ 💖 💐 🎀 🎉 🕉️ 🪔 🦚 🍀 🎂 🙏 👵 … |
+| 🔤 **Text** | any words + ready phrases ("Subscribe to my YouTube ❤️", "नमस्ते 🙏"…), **6 fonts** (Bold, Serif, Handwriting, Mono, Narrow, Thin), 5 colours, **glow** |
+| 😊 **Sticker** | **16 real vector stickers** — ⭐ star, ❤️ heart, 🌸 flower, 🦋 butterfly, ✨ sparkle, 🔆 glow, ☀️ sun, 👑 crown, 🎈 balloon, 🎀 bow, 🔔 bell, 🌈 rainbow, 🍃 leaf, 🎉 party, plus **YouTube / SUBSCRIBE** buttons — and 6 text badges (`LIKE & SHARE`, `FOLLOW ME`, `THANK YOU`, `BELL`, `MY VLOG`) and 30 emoji |
 | 🎵 **Music** | pick any song from the phone, set its volume — it is looped under the whole movie |
 | ✨ **Effect** | transitions between clips: **Fade, Slide, Zoom, Circle** |
 | 🎨 **Look** | colour filters: **Warm, Cool, Black & White, Vivid, Sepia** |
@@ -43,7 +43,9 @@ Movies are saved to **Gallery → Movies → SimpleVideoMaker**; the result scre
 | ⏩ **Speed** | video 0.5× (slow), 1×, 1.5×, 2× (fast) |
 | ✂️ **Split** | cut a clip in two, then reorder or restyle each half |
 | ⬅️ ➡️ | reorder clips · 🔀 **Copy** duplicates a clip · 🔊 **Sound** mutes a clip |
-| 👆 drag | move any text/sticker with a finger, ➕/➖ bigger/smaller, ✨ glow |
+| 👆 drag | move any text/sticker with a finger |
+| 🔍 **size** | a slider plus two-finger pinch: stickers and text go from tiny to screen-filling (2 % → 95 % of the frame) |
+| 📐 **Size** | output resolution: **720×1280 HD**, **1080×1920 Full HD**, **1080×1080 square**, **1920×1080 landscape**, **540×960 small** + quality 2.5 / 5 / 8 / 12 Mbps |
 | ▶️ **Preview** | watch the real composition (filters, text, transitions) before saving |
 | 🎉 **Make Video** | renders a real **MP4 720×1280, 30 fps** into the Gallery |
 | हिं / EN | the entire app switches between **Hindi and English** |
@@ -51,6 +53,14 @@ Movies are saved to **Gallery → Movies → SimpleVideoMaker**; the result scre
 
 The soundtrack is built by mixing the phone's music with the clips' original sound and
 re-encoding it to AAC (44.1 kHz stereo) — see `AudioMixer.java`.
+
+### Stickers are drawn, not typed
+
+![sticker pack](docs/stickers.png)
+
+Every sticker in `StickerArt.java` is a hand-made path + gradient drawing, so it stays sharp
+at any size (a 30 px picker chip and a 900 px sticker in a 1080p movie use the same code),
+takes no memory, and works with no internet and no bundled image files.
 
 ---
 
@@ -80,6 +90,8 @@ android/app/src/main/java/com/simplevideomaker/app/
     VideoExporter.java   decode → composite → H.264 encode → mux (also powers the preview)
     AudioMixer.java      music + clip sound → mix → AAC (streaming, looped music)
     MediaSaver.java      save into Gallery, Share / Watch intents
+    StickerArt.java      the 16 vector stickers (paths + gradients, scalable)
+    StickerChip.java     sticker preview in the picker
     Project.java  ProjectStore.java  Clip.java  Overlay.java
 tools/make_icons.py      regenerates every launcher icon (pure Python, no deps)
 .github/workflows/android.yml   the APK build (JDK 17 + Android SDK 34 + gradle)
@@ -101,7 +113,8 @@ Requirements: `minSdk 24` (Android 7), `targetSdk 34`, portrait only, no third-p
 
 ## Known trade-offs
 
-* Movies are portrait 9:16 (WhatsApp status / Shorts friendly).
+* Default output is portrait 9:16 (WhatsApp status / Shorts friendly); square and landscape
+  are one tap away in **📐 Size**.
 * A clip longer than 60 s is trimmed to its first minute; whole movies are capped at 5 minutes.
 * Muted or sped-up clips keep the music only (their own sound is skipped).
 * Effects apply from the second clip onwards.
