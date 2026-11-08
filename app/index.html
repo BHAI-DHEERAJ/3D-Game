@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#FF5A5F">
+<title>Simple Video Maker</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">🎬</span>
+    <span data-i18n="appName">Simple Video Maker</span>
+  </div>
+  <button id="langBtn" class="lang-btn" aria-label="Change language">हिं</button>
+</header>
+
+<main>
+  <!-- Empty state / how it works -->
+  <section id="empty" class="empty">
+    <div class="hero">👵🎬</div>
+    <h1 data-i18n="welcome">Make a video in 3 easy steps</h1>
+    <ol class="steps">
+      <li><span class="n">1</span><span data-i18n="step1">Add your photos and videos</span></li>
+      <li><span class="n">2</span><span data-i18n="step2">Add text or a sticker</span></li>
+      <li><span class="n">3</span><span data-i18n="step3">Press "Make Video"</span></li>
+    </ol>
+    <button id="startBtn" class="big-primary">
+      <span class="ico">➕</span><span data-i18n="addMedia">Add Photos &amp; Videos</span>
+    </button>
+    <p class="hint" data-i18n="hintPick">Choose photos or videos from your phone</p>
+  </section>
+
+  <!-- Editor -->
+  <section id="editor" class="editor hidden">
+    <div class="stage-wrap">
+      <canvas id="stage" width="720" height="1280"></canvas>
+      <div id="playHint" class="play-hint hidden">▶</div>
+    </div>
+
+    <div id="overlayTools" class="overlay-tools hidden">
+      <button data-act="bigger" class="tool"><span class="ico">➕</span><span data-i18n="bigger">Bigger</span></button>
+      <button data-act="smaller" class="tool"><span class="ico">➖</span><span data-i18n="smaller">Smaller</span></button>
+      <button data-act="delOverlay" class="tool danger"><span class="ico">🗑️</span><span data-i18n="remove">Remove</span></button>
+      <button data-act="doneOverlay" class="tool"><span class="ico">✔️</span><span data-i18n="done">Done</span></button>
+    </div>
+
+    <div id="timeline" class="timeline" aria-label="Your clips"></div>
+
+    <div id="clipTools" class="clip-tools">
+      <button data-act="text" class="tool"><span class="ico">🔤</span><span data-i18n="text">Text</span></button>
+      <button data-act="sticker" class="tool"><span class="ico">😊</span><span data-i18n="sticker">Sticker</span></button>
+      <button data-act="speed" class="tool"><span class="ico">⏱️</span><span id="speedLabel">3s</span></button>
+      <button data-act="left" class="tool"><span class="ico">⬅️</span><span data-i18n="left">Left</span></button>
+      <button data-act="right" class="tool"><span class="ico">➡️</span><span data-i18n="right">Right</span></button>
+      <button data-act="delete" class="tool danger"><span class="ico">🗑️</span><span data-i18n="remove">Remove</span></button>
+    </div>
+  </section>
+</main>
+
+<!-- Bottom action bar -->
+<footer id="actionbar" class="actionbar hidden">
+  <button id="addBtn" class="bar-btn"><span class="ico">➕</span><span data-i18n="add">Add</span></button>
+  <button id="previewBtn" class="bar-btn"><span class="ico">▶️</span><span data-i18n="preview">Preview</span></button>
+  <button id="makeBtn" class="bar-btn primary"><span class="ico">🎉</span><span data-i18n="make">Make Video</span></button>
+</footer>
+
+<!-- Text sheet -->
+<div id="textSheet" class="sheet-backdrop hidden">
+  <div class="sheet">
+    <div class="sheet-head">
+      <h2 data-i18n="addText">Add Text</h2>
+      <button class="close-sheet" data-close>✕</button>
+    </div>
+    <input id="textInput" class="text-input" type="text" maxlength="80" placeholder="Type here…">
+    <div id="quickPhrases" class="chips"></div>
+    <button id="addTextBtn" class="big-primary"><span class="ico">✔️</span><span data-i18n="addTextOnScreen">Put text on video</span></button>
+  </div>
+</div>
+
+<!-- Sticker sheet -->
+<div id="stickerSheet" class="sheet-backdrop hidden">
+  <div class="sheet">
+    <div class="sheet-head">
+      <h2 data-i18n="addSticker">Add Sticker</h2>
+      <button class="close-sheet" data-close>✕</button>
+    </div>
+    <div id="stickerGrid" class="sticker-grid"></div>
+  </div>
+</div>
+
+<!-- Export / progress sheet -->
+<div id="progressSheet" class="sheet-backdrop hidden">
+  <div class="sheet center">
+    <div class="spinner">🎬</div>
+    <h2 data-i18n="making">Making your video…</h2>
+    <p class="hint" data-i18n="pleaseWait">Please wait, do not close the app</p>
+    <div class="progress"><div id="progressBar" class="progress-bar"></div></div>
+    <p id="progressText" class="progress-text">0%</p>
+  </div>
+</div>
+
+<!-- Result sheet -->
+<div id="resultSheet" class="sheet-backdrop hidden">
+  <div class="sheet center">
+    <div class="spinner">✅</div>
+    <h2 id="resultTitle" data-i18n="saved">Video saved!</h2>
+    <p class="hint" data-i18n="savedHint">You can find it in your Gallery</p>
+    <button id="shareBtn" class="big-primary"><span class="ico">📤</span><span data-i18n="share">Share</span></button>
+    <button class="big-secondary" data-close data-i18n="close">Close</button>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<input id="fileInput" type="file" accept="image/*,video/*" multiple hidden>
+
+<script src="app.js"></script>
+</body>
+</html>

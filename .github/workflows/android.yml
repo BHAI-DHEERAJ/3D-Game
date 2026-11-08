@@ -1,0 +1,78 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'android/**'
+      - '.github/workflows/android.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    name: Build Simple Video Maker APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK packages
+        run: |
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" > /dev/null
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Create signing key
+        working-directory: android
+        env:
+          KS_PASS: simplevideo
+        run: |
+          keytool -genkeypair -v -keystore keystore.jks -alias simplevideo \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass "$KS_PASS" -keypass "$KS_PASS" \
+            -dname "CN=Simple Video Maker, OU=Personal, O=Personal, L=Panipat, S=Haryana, C=IN"
+
+      - name: Build APK
+        working-directory: android
+        env:
+          KS_PASS: simplevideo
+          KS_ALIAS: simplevideo
+        run: gradle assembleRelease --no-daemon --stacktrace
+
+      - name: Collect APK
+        run: |
+          mkdir -p out
+          cp android/app/build/outputs/apk/release/*.apk out/SimpleVideoMaker-1.0.apk
+          ls -lh out
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SimpleVideoMaker-apk
+          path: out/SimpleVideoMaker-1.0.apk
+          retention-days: 90
+
+      - name: Upload signing keystore (keep it, so future updates install over this one)
+        uses: actions/upload-artifact@v4
+        with:
+          name: signing-keystore
+          path: android/keystore.jks
+          retention-days: 90

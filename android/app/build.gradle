@@ -1,0 +1,60 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Optional release keystore: drop a keystore.jks in the android/ folder (CI creates one)
+def ksFile = rootProject.file("keystore.jks")
+def ksPass = System.getenv("KS_PASS") ?: "simplevideo"
+def ksAlias = System.getenv("KS_ALIAS") ?: "simplevideo"
+
+android {
+    namespace 'com.simplevideomaker.app'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.simplevideomaker.app"
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+    }
+
+    signingConfigs {
+        release {
+            if (ksFile.exists()) {
+                storeFile ksFile
+                storePassword ksPass
+                keyAlias ksAlias
+                keyPassword ksPass
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            shrinkResources false
+            signingConfig ksFile.exists() ? signingConfigs.release : signingConfigs.debug
+        }
+        debug {
+            applicationIdSuffix ""
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    // The web app lives at the repository root in /app — ship it as-is inside the APK.
+    sourceSets {
+        main {
+            assets.srcDirs += ["$rootDir/../app"]
+        }
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+}
