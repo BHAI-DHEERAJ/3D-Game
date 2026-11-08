@@ -14,8 +14,8 @@ The APK is built by **GitHub Actions** on every change.
 
 ## Install
 
-1. **[Releases](../../releases) → `apk-latest` → `SimpleVideoMaker-1.2.apk`**
-   (also committed at `public/SimpleVideoMaker-1.2.apk`, and in *Actions → latest run → Artifacts*).
+1. **[Releases](../../releases) → `apk-latest` → `SimpleVideoMaker-1.3.apk`**
+   (also committed at `public/SimpleVideoMaker-1.3.apk`, and in *Actions → latest run → Artifacts*).
 2. Send the file to the phone (WhatsApp / Drive / USB), tap it, allow *"Install unknown apps"*.
 3. Open **Simple Video Maker** from the app drawer — hold the phone sideways (the app is
    **landscape only**). Works offline, forever.
@@ -28,7 +28,8 @@ Movies are saved to **Gallery → Movies → SimpleVideoMaker**; the result scre
 ## What's inside
 
 ### 📁 Projects / Drafts
-* Home screen lists every video as a draft card with its thumbnail, clip count and length.
+* Home screen shows every video as a draft card (thumbnail, clip count, length) in a **two-column
+  grid**, with **➕ New** in the corner of the list too.
 * Everything auto-saves as you edit — close the app, come back later, keep going.
 * **Rename**, **Duplicate**, **Delete** (long-press a draft) — photos always stay safe in the gallery.
 * Media access is remembered (`ACTION_OPEN_DOCUMENT` + persistable URIs), so drafts survive reboots.
@@ -39,9 +40,12 @@ Movies are saved to **Gallery → Movies → SimpleVideoMaker**; the result scre
 * A **scrubber bar with a time ruler** (0:00 · 0:05 · 0:10 …) under the preview.
 * Every clip is a **block with its own filmstrip** — drag the orange **playhead** anywhere to jump,
   **pinch with two fingers** to zoom 1×–10×, tap a block to select that clip.
-* A thin **audio lane** under the blocks shows the music and a ♪ / 🔇 badge per clip.
+* **Drag a block's orange edge to trim it** — shorten a clip from either side right on the timeline.
+* A thin **audio lane** under the blocks shows the music and a ♪ / 🔇 badge per clip, and the ruler
+  shows the **total length** of the movie.
+* The timeline **follows the playhead** once you zoom in, so the frame you're editing is always on screen.
 * Landscape layout: **preview top-left, timeline underneath, tool rail on the right** — every tool is
-  one tap away, nothing is hidden behind a menu.
+  one tap away, nothing is hidden behind a menu; ↩️ ↪️ ❓ ▶️ 🎉 live in the header.
 * The preview follows the playhead frame by frame (the real decoded video frame, not a thumbnail).
 
 ### ✂️ The editor
@@ -54,6 +58,8 @@ Movies are saved to **Gallery → Movies → SimpleVideoMaker**; the result scre
 | 🎨 **Look** | colour filters: **Warm, Cool, Black & White, Vivid, Sepia** |
 | ⏱️ **Duration** | how long a photo stays (2s / 3s / 5s / 8s) |
 | ⏩ **Speed** | video 0.5× (slow), 1×, 1.5×, 2× (fast) |
+| ✋ **Trim** | drag the left or right orange edge of a clip on the timeline to trim it (videos keep their sound in sync) |
+| ↩️ ↪️ **Undo / Redo** | every change — add, remove, move, split, trim, speed, filter, effect, text, sticker, music — can be undone 40 steps back |
 | ✂️ **Split** | cuts the selected clip **exactly at the playhead** (or in the middle if the playhead is at an edge), then each half can be reordered or restyled |
 | ⬅️ ➡️ | move the clip earlier / later · 🔀 **Copy** duplicates it · 🗑️ **Remove** deletes it |
 | 👆 drag | move any text/sticker with a finger |
@@ -116,7 +122,7 @@ tools/make_icons.py      regenerates every launcher icon (pure Python, no deps)
 
 * **Cloud:** Actions → *Build Android APK* → *Run workflow* (or just push to the branch).
   Produces the `SimpleVideoMaker-apk` artifact, a `signing-keystore`, a release, and refreshes
-  `public/SimpleVideoMaker-1.2.apk`.
+  `public/SimpleVideoMaker-1.3.apk`.
 * **Local:** Android Studio (open `android/`), or:
 
 ```bash
