@@ -1,16 +1,21 @@
 package com.simplevideomaker.app;
 
 import android.graphics.Bitmap;
+import android.graphics.BlurMaskFilter;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.ColorFilter;
+import android.graphics.ColorMatrix;
+import android.graphics.ColorMatrixColorFilter;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.Typeface;
 
 /**
- * Draws one composed frame (picture + text + stickers) at 720x1280.
- * Used by both the on-screen preview and the video encoder, so what you see is what you get.
+ * Draws one composed frame (picture + filter + text + stickers) at 720x1280, and blends
+ * transitions between two frames. Used by the preview and by the encoder, so what she sees
+ * is exactly what she gets.
  */
 public final class FrameRenderer {
 
@@ -23,8 +28,91 @@ public final class FrameRenderer {
     private static final Path CLIP_PATH = new Path();
     private static final RectF R = new RectF();
 
+    private static final ColorFilter[] FILTERS = new ColorFilter[6];
+
     private FrameRenderer() {
     }
+
+    /* ---------------------------------------------------------------- filters */
+
+    public static ColorFilter filterFor(int id) {
+        if (id <= 0 || id >= FILTERS.length) {
+            return null;
+        }
+        if (FILTERS[id] == null) {
+            FILTERS[id] = buildFilter(id);
+        }
+        return FILTERS[id];
+    }
+
+    public static String filterName(int id) {
+        switch (id) {
+            case Clip.F_WARM:
+                return "Warm";
+            case Clip.F_COOL:
+                return "Cool";
+            case Clip.F_MONO:
+                return "B&W";
+            case Clip.F_VIVID:
+                return "Vivid";
+            case Clip.F_SEPIA:
+                return "Sepia";
+            default:
+                return "None";
+        }
+    }
+
+    private static ColorFilter buildFilter(int id) {
+        ColorMatrix m = new ColorMatrix();
+        switch (id) {
+            case Clip.F_WARM: {
+                ColorMatrix w = new ColorMatrix(new float[]{
+                        1.15f, 0, 0, 0, 12,
+                        0, 1.03f, 0, 0, 6,
+                        0, 0, 0.88f, 0, -6,
+                        0, 0, 0, 1, 0});
+                m.postConcat(w);
+                break;
+            }
+            case Clip.F_COOL: {
+                ColorMatrix c = new ColorMatrix(new float[]{
+                        0.9f, 0, 0, 0, -6,
+                        0, 1.0f, 0, 0, 2,
+                        0, 0, 1.15f, 0, 12,
+                        0, 0, 0, 1, 0});
+                m.postConcat(c);
+                break;
+            }
+            case Clip.F_MONO: {
+                m.setSaturation(0f);
+                break;
+            }
+            case Clip.F_VIVID: {
+                m.setSaturation(1.45f);
+                ColorMatrix boost = new ColorMatrix(new float[]{
+                        1.08f, 0, 0, 0, 0,
+                        0, 1.08f, 0, 0, 0,
+                        0, 0, 1.08f, 0, 0,
+                        0, 0, 0, 1, 0});
+                m.postConcat(boost);
+                break;
+            }
+            case Clip.F_SEPIA: {
+                ColorMatrix s = new ColorMatrix(new float[]{
+                        0.393f, 0.769f, 0.189f, 0, 0,
+                        0.349f, 0.686f, 0.168f, 0, 0,
+                        0.272f, 0.534f, 0.131f, 0, 0,
+                        0, 0, 0, 1, 0});
+                m.postConcat(s);
+                break;
+            }
+            default:
+                return null;
+        }
+        return new ColorMatrixColorFilter(m);
+    }
+
+    /* ------------------------------------------------------------------ frame */
 
     public static void drawFrame(Canvas c, Clip clip, Bitmap media, float zoom, Overlay selected) {
         c.drawColor(0xFF0D0A09);
@@ -33,7 +121,8 @@ public final class FrameRenderer {
         }
         Bitmap bmp = media != null && !media.isRecycled() ? media : clip.image;
         if (bmp != null && !bmp.isRecycled()) {
-            drawMedia(c, bmp, clip.kind == Clip.VIDEO ? clip.videoRotation : 0, zoom);
+            drawMedia(c, bmp, clip.isVideo() ? clip.videoRotation : 0, zoom,
+                    filterFor(clip.filter));
         }
         for (int i = 0; i < clip.overlays.size(); i++) {
             drawOverlay(c, clip.overlays.get(i));
@@ -43,9 +132,8 @@ public final class FrameRenderer {
         }
     }
 
-    /* ------------------------------------------------------------------ media */
-
-    private static void drawMedia(Canvas c, Bitmap bmp, int rotation, float zoom) {
+    private static void drawMedia(Canvas c, Bitmap bmp, int rotation, float zoom,
+                                  ColorFilter filter) {
         boolean rot = rotation == 90 || rotation == 270;
         float srcW = bmp.getWidth();
         float srcH = bmp.getHeight();
@@ -59,7 +147,7 @@ public final class FrameRenderer {
             c.rotate(rotation, OUT_W / 2f, OUT_H / 2f);
         }
 
-        // 1) background: same picture, zoomed to fill, dimmed — keeps tall/wide photos full-frame
+        // background: the same picture filling the frame, dimmed
         float bgW;
         float bgH;
         if (aspect > frameAspect) {
@@ -69,15 +157,14 @@ public final class FrameRenderer {
             bgW = OUT_W;
             bgH = OUT_W / aspect;
         }
-        bgW *= zoom;
-        bgH *= zoom;
         P.reset();
         P.setAntiAlias(true);
         P.setFilterBitmap(true);
         P.setAlpha(110);
-        drawFit(c, bmp, rot, bgW, bgH, P);
+        P.setColorFilter(filter);
+        fill(c, bmp, rot, bgW * zoom, bgH * zoom, P);
 
-        // 2) the real picture, fitted inside the frame
+        // the picture itself, fitted
         float fgW;
         float fgH;
         if (aspect > frameAspect) {
@@ -94,12 +181,13 @@ public final class FrameRenderer {
         P.setAntiAlias(true);
         P.setFilterBitmap(true);
         P.setAlpha(255);
-        CLIP_PATH.reset();
+        P.setColorFilter(filter);
         float boxW = rot ? fgH : fgW;
         float boxH = rot ? fgW : fgH;
         float left = (OUT_W - boxW) / 2f;
         float top = (OUT_H - boxH) / 2f;
         R.set(left, top, left + boxW, top + boxH);
+        CLIP_PATH.reset();
         CLIP_PATH.addRoundRect(R, 18, 18, Path.Direction.CW);
         c.save();
         c.clipPath(CLIP_PATH);
@@ -109,14 +197,95 @@ public final class FrameRenderer {
         c.restoreToCount(save);
     }
 
-    private static void drawFit(Canvas c, Bitmap bmp, boolean rot, float w, float h, Paint p) {
-        // w/h are the size the picture should have on screen; canvas may be rotated 90 degrees
+    private static void fill(Canvas c, Bitmap bmp, boolean rot, float w, float h, Paint p) {
         float boxW = rot ? h : w;
         float boxH = rot ? w : h;
         float left = (OUT_W - boxW) / 2f;
         float top = (OUT_H - boxH) / 2f;
         R.set(left, top, left + boxW, top + boxH);
         c.drawBitmap(bmp, null, R, p);
+    }
+
+    /* ------------------------------------------------------------ transitions */
+
+    /**
+     * Blends the outgoing last frame with the incoming first frames.
+     * p goes 0 (still the old clip) to 1 (fully the new clip).
+     */
+    public static void composeTransition(Canvas c, Bitmap outgoing, Bitmap incoming, int type,
+                                         float p, Bitmap scratch) {
+        if (outgoing == null || p >= 1f) {
+            if (incoming != null) {
+                c.drawBitmap(incoming, 0, 0, null);
+            }
+            return;
+        }
+        float t = Math.max(0f, Math.min(1f, p));
+        P.reset();
+        P.setAntiAlias(true);
+        P.setFilterBitmap(true);
+
+        switch (type) {
+            case Clip.T_SLIDE: {
+                c.drawBitmap(outgoing, 0, 0, null);
+                float dx = OUT_W * (1f - ease(t));
+                c.drawBitmap(incoming, dx, 0, null);
+                break;
+            }
+            case Clip.T_ZOOM: {
+                c.drawBitmap(outgoing, 0, 0, null);
+                float scale = 0.62f + 0.38f * ease(t);
+                float w = OUT_W * scale;
+                float h = OUT_H * scale;
+                R.set((OUT_W - w) / 2f, (OUT_H - h) / 2f, (OUT_W + w) / 2f, (OUT_H + h) / 2f);
+                int alpha = (int) (255 * Math.min(1f, t * 1.6f));
+                P.setAlpha(alpha);
+                c.drawBitmap(incoming, null, R, P);
+                break;
+            }
+            case Clip.T_CIRCLE: {
+                c.drawBitmap(outgoing, 0, 0, null);
+                float radius = ease(t) * (float) Math.hypot(OUT_W, OUT_H) * 0.55f;
+                c.save();
+                c.clipPath(circlePath(OUT_W / 2f, OUT_H / 2f, radius));
+                c.drawBitmap(incoming, 0, 0, null);
+                c.restore();
+                break;
+            }
+            case Clip.T_FADE:
+            default: {
+                c.drawBitmap(incoming, 0, 0, null);
+                P.setAlpha((int) (255 * (1f - t)));
+                c.drawBitmap(outgoing, 0, 0, P);
+                break;
+            }
+        }
+        P.setAlpha(255);
+    }
+
+    private static Path circlePath(float cx, float cy, float radius) {
+        Path p = new Path();
+        p.addCircle(cx, cy, Math.max(1f, radius), Path.Direction.CW);
+        return p;
+    }
+
+    private static float ease(float x) {
+        return 1f - (1f - x) * (1f - x);
+    }
+
+    public static String transitionName(int id) {
+        switch (id) {
+            case Clip.T_FADE:
+                return "Fade";
+            case Clip.T_SLIDE:
+                return "Slide";
+            case Clip.T_ZOOM:
+                return "Zoom";
+            case Clip.T_CIRCLE:
+                return "Circle";
+            default:
+                return "None";
+        }
     }
 
     /* --------------------------------------------------------------- overlays */
@@ -132,11 +301,16 @@ public final class FrameRenderer {
         TEXT.setTypeface(BOLD);
         TEXT.setTextSize(size);
 
+        float base = baseline(y);
+
         if (o.type == Overlay.EMOJI) {
+            if (o.glow) {
+                glowPass(c, o.text, x, base, size, 0xCCFFFFFF);
+            }
             TEXT.setStyle(Paint.Style.FILL);
             TEXT.setColor(Color.WHITE);
-            TEXT.setShadowLayer(size * 0.18f, 0, size * 0.05f, 0x66000000);
-            c.drawText(o.text, x, baseline(y), TEXT);
+            TEXT.setShadowLayer(size * 0.16f, 0, size * 0.05f, 0x66000000);
+            c.drawText(o.text, x, base, TEXT);
             TEXT.clearShadowLayer();
             return;
         }
@@ -146,34 +320,48 @@ public final class FrameRenderer {
             float bw = tw + size * 1.1f;
             float bh = size * 1.55f;
             R.set(x - bw / 2f, y - bh / 2f, x + bw / 2f, y + bh / 2f);
-            Paint box = P;
-            box.reset();
-            box.setAntiAlias(true);
-            box.setStyle(Paint.Style.FILL);
-            box.setColor(o.color);
-            box.setShadowLayer(size * 0.16f, 0, size * 0.05f, 0x59000000);
-            c.drawRoundRect(R, bh * 0.32f, bh * 0.32f, box);
-            box.clearShadowLayer();
+            P.reset();
+            P.setAntiAlias(true);
+            P.setStyle(Paint.Style.FILL);
+            P.setColor(o.color == 0 ? 0xFFFF0000 : o.color);
+            P.setShadowLayer(size * (o.glow ? 0.4f : 0.16f), 0, size * 0.05f,
+                    o.glow ? 0xAAFFFFFF : 0x59000000);
+            c.drawRoundRect(R, bh * 0.32f, bh * 0.32f, P);
+            P.clearShadowLayer();
             TEXT.setStyle(Paint.Style.FILL);
             TEXT.setColor(Color.WHITE);
-            c.drawText(o.text, x, baseline(y), TEXT);
+            c.drawText(o.text, x, base, TEXT);
             return;
         }
 
-        // plain text: black outline + white fill, readable on any photo
-        float bl = baseline(y);
+        // plain text
+        if (o.glow) {
+            glowPass(c, o.text, x, base, size, o.color);
+        }
         TEXT.setStyle(Paint.Style.STROKE);
         TEXT.setStrokeWidth(size * 0.18f);
         TEXT.setStrokeJoin(Paint.Join.ROUND);
         TEXT.setStrokeMiter(2f);
         TEXT.setColor(0xCC000000);
-        c.drawText(o.text, x, bl, TEXT);
+        c.drawText(o.text, x, base, TEXT);
 
         TEXT.setStyle(Paint.Style.FILL);
         TEXT.setColor(o.color == 0 ? Color.WHITE : o.color);
         TEXT.setShadowLayer(size * 0.12f, 0, size * 0.04f, 0x55000000);
-        c.drawText(o.text, x, bl, TEXT);
+        c.drawText(o.text, x, base, TEXT);
         TEXT.clearShadowLayer();
+    }
+
+    private static void glowPass(Canvas c, String text, float x, float base, float size, int color) {
+        try {
+            Paint glow = new Paint(TEXT);
+            glow.setStyle(Paint.Style.FILL);
+            glow.setColor(color);
+            glow.setMaskFilter(new BlurMaskFilter(size * 0.22f, BlurMaskFilter.Blur.NORMAL));
+            c.drawText(text, x, base, glow);
+            glow.setMaskFilter(null);
+        } catch (Throwable ignored) {
+        }
     }
 
     private static float baseline(float centreY) {
@@ -183,16 +371,15 @@ public final class FrameRenderer {
 
     private static void drawHandle(Canvas c, Overlay o) {
         RectF b = boundsOf(o);
-        Paint p = P;
-        p.reset();
-        p.setAntiAlias(true);
-        p.setStyle(Paint.Style.STROKE);
-        p.setStrokeWidth(4f);
-        p.setColor(0xFF00DCFF);
-        p.setPathEffect(new android.graphics.DashPathEffect(new float[]{14f, 10f}, 0f));
+        P.reset();
+        P.setAntiAlias(true);
+        P.setStyle(Paint.Style.STROKE);
+        P.setStrokeWidth(4f);
+        P.setColor(0xFF00DCFF);
+        P.setPathEffect(new android.graphics.DashPathEffect(new float[]{14f, 10f}, 0f));
         R.set(b.left - 10f, b.top - 10f, b.right + 10f, b.bottom + 10f);
-        c.drawRoundRect(R, 16f, 16f, p);
-        p.setPathEffect(null);
+        c.drawRoundRect(R, 16f, 16f, P);
+        P.setPathEffect(null);
     }
 
     public static RectF boundsOf(Overlay o) {

@@ -17,12 +17,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Real on-device video making:
+ * The video engine.
  *
- *   photos / video frames  ->  drawn with Canvas (text + stickers)  ->  MediaCodec H.264  ->  MP4
+ *   photos + decoded video frames  ->  Canvas (filters, text, stickers, transitions)  ->  H.264  ->  MP4
  *
- * Video clips are decoded with MediaCodec, their sound is copied (passed through) into the MP4,
- * and everything is muxed with MediaMuxer. No internet, no ffmpeg, no server.
+ * Soundtrack: background music + clip sound mixed by {@link AudioMixer} (or, if that is not
+ * available, the clips' original compressed audio copied straight into the MP4).
+ * No internet, no ffmpeg, no server — everything happens on the phone.
  */
 public final class VideoExporter {
 
@@ -30,88 +31,128 @@ public final class VideoExporter {
         void onProgress(int percent);
     }
 
-    private static final int FPS = 30;
+    /** Called for every finished frame. Return false to stop early (used by the preview). */
+    public interface FrameSink {
+        boolean onFrame(Bitmap composed, long ptsUs);
+    }
+
+    public static final int FPS = 30;
     private static final long FRAME_US = 1000000L / FPS;
     private static final int W = FrameRenderer.OUT_W;
     private static final int H = FrameRenderer.OUT_H;
-    private static final int MAX_FRAMES = 30 * 60 * 5; // 5 minutes is plenty
+    private static final int MAX_FRAMES = 30 * 60 * 5;
+    private static final long TRANSITION_US = 500000L; // half a second
 
     private VideoExporter() {
     }
 
-    /* ------------------------------------------------------------------ export */
+    public static int frameCount(List<Clip> clips) {
+        int total = 0;
+        for (Clip c : clips) {
+            total += framesOf(c);
+        }
+        return total;
+    }
 
-    public static void export(Context ctx, List<Clip> clips, File outFile, Listener listener)
-            throws Exception {
+    private static int framesOf(Clip c) {
+        return Math.max(1, Math.round(Math.max(200, c.durationMs) * FPS / 1000f));
+    }
+
+    /* ---------------------------------------------------------------- composing */
+
+    /**
+     * Draws every frame of the movie. The sink decides what happens with it: encode it,
+     * or show it on screen for the preview.
+     */
+    public static void renderFrames(Context ctx, List<Clip> clips, FrameSink sink,
+                                    Listener listener) throws Exception {
         if (clips == null || clips.isEmpty()) {
             throw new IOException("empty timeline");
         }
-        long totalUs = 0;
-        for (Clip c : clips) {
-            totalUs += Math.max(200, c.durationMs) * 1000L;
-        }
-        int frames = (int) Math.max(1, totalUs / FRAME_US);
-        if (frames > MAX_FRAMES) {
+        int totalFrames = frameCount(clips);
+        if (totalFrames > MAX_FRAMES) {
             throw new IOException("video is too long for one movie");
         }
 
-        ArrayList<Sample> audio = new ArrayList<>();
-        MediaFormat audioFormat = collectAudio(ctx, clips, audio);
-
         Bitmap frame = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(frame);
-        Encoder encoder = new Encoder(outFile, audioFormat, audio);
-        encoder.start();
+        Bitmap scratch = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888);
+        Bitmap snapshot = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888);
+        Canvas out = new Canvas(frame);
+        Canvas incoming = new Canvas(scratch);
+        Canvas snap = new Canvas(snapshot);
+        boolean haveSnapshot = false;
 
-        int clipIndex = 0;
-        long clipStartUs = 0;
+        long ptsUs = 0;
+        int done = 0;
         VideoReader reader = null;
+
         try {
-            for (int f = 0; f < frames; f++) {
-                long tUs = f * FRAME_US;
-                while (clipIndex < clips.size() - 1
-                        && tUs >= clipStartUs + Math.max(200, clips.get(clipIndex).durationMs) * 1000L) {
-                    clipStartUs += Math.max(200, clips.get(clipIndex).durationMs) * 1000L;
-                    clipIndex++;
-                }
-                Clip clip = clips.get(clipIndex);
-                long localUs = tUs - clipStartUs;
-                Bitmap media = clip.image;
+            for (int ci = 0; ci < clips.size(); ci++) {
+                Clip clip = clips.get(ci);
+                int frames = framesOf(clip);
+                long clipUs = Math.max(200, clip.durationMs) * 1000L;
+                boolean video = clip.isVideo();
 
-                if (clip.kind == Clip.VIDEO) {
-                    if (reader == null || reader.clip != clip) {
-                        if (reader != null) {
-                            reader.release();
+                if (video && (reader == null || reader.clip != clip)) {
+                    if (reader != null) {
+                        reader.release();
+                    }
+                    reader = new VideoReader(ctx, clip);
+                }
+
+                int transitionFrames = (clip.transition != Clip.T_NONE && ci > 0 && haveSnapshot)
+                        ? (int) Math.max(1, TRANSITION_US * FPS / 1000000L) : 0;
+
+                for (int f = 0; f < frames; f++) {
+                    float localSec = (float) f / FPS;
+                    long srcUs = (long) ((clip.startMs + localSec * 1000f * clip.speed) * 1000f);
+
+                    Bitmap media = clip.image;
+                    if (video && reader != null) {
+                        Bitmap decoded = reader.frameAt(srcUs);
+                        if (decoded != null) {
+                            media = decoded;
                         }
-                        reader = new VideoReader(ctx, clip);
                     }
-                    Bitmap decoded = reader.frameAt(localUs);
-                    if (decoded != null) {
-                        media = decoded;
+                    float zoom = 1f + 0.07f * easeOut(Math.min(1f, localSec * 1000f
+                            / Math.max(200, clip.durationMs)));
+
+                    boolean inTransition = f < transitionFrames;
+                    Canvas target = inTransition ? incoming : out;
+                    FrameRenderer.drawFrame(target, clip, media, zoom, null);
+
+                    if (inTransition) {
+                        float p = (float) f / transitionFrames;
+                        FrameRenderer.composeTransition(out, snapshot, scratch,
+                                clip.transition, p, scratch);
+                    } else if (f == 0 && clip.transition != Clip.T_NONE && ci > 0 && haveSnapshot) {
+                        // transition already applied on the first frame
+                    }
+
+                    if (!sink.onFrame(frame, ptsUs)) {
+                        return;
+                    }
+                    ptsUs += FRAME_US;
+                    done++;
+                    if (listener != null && (f % 5 == 0)) {
+                        listener.onProgress((int) (done * 100L / totalFrames));
                     }
                 }
 
-                float zoom = 1f + 0.07f * easeOut(Math.min(1f,
-                        localUs / (Math.max(200, clip.durationMs) * 1000f)));
-                FrameRenderer.drawFrame(canvas, clip, media, zoom, null);
-                encoder.feed(frame, tUs);
-
-                if (listener != null && f % 5 == 0) {
-                    listener.onProgress((int) ((f + 1) * 100L / frames));
+                // remember this clip's last frame, it becomes the "outgoing" side of the transition
+                snap.drawBitmap(frame, 0, 0, null);
+                haveSnapshot = true;
+                if (listener != null) {
+                    listener.onProgress((int) (done * 100L / totalFrames));
                 }
             }
         } finally {
             if (reader != null) {
                 reader.release();
             }
-        }
-
-        encoder.finish();
-        if (listener != null) {
-            listener.onProgress(100);
-        }
-        if (!outFile.exists() || outFile.length() < 1024) {
-            throw new IOException("could not write the video file");
+            frame.recycle();
+            scratch.recycle();
+            snapshot.recycle();
         }
     }
 
@@ -119,14 +160,67 @@ public final class VideoExporter {
         return 1f - (1f - x) * (1f - x);
     }
 
-    /** First decoded frame of a video, used for the preview and the thumbnails. */
+    public static long totalUs(List<Clip> clips) {
+        long total = 0;
+        for (Clip c : clips) {
+            total += Math.max(200, c.durationMs) * 1000L;
+        }
+        return Math.max(FRAME_US, total);
+    }
+
+    /* ------------------------------------------------------------------ export */
+
+    public static void export(Context ctx, Project project, File outFile, Listener listener)
+            throws Exception {
+        if (project.clips.isEmpty()) {
+            throw new IOException("empty timeline");
+        }
+        if (frameCount(project.clips) > MAX_FRAMES) {
+            throw new IOException("video is too long for one movie");
+        }
+        long total = totalUs(project.clips);
+
+        AudioMixer mixer = null;
+        try {
+            mixer = new AudioMixer(ctx, project);
+        } catch (Throwable t) {
+            mixer = null;
+        }
+
+        PassthroughAudio passthrough = null;
+        if (mixer == null) {
+            passthrough = PassthroughAudio.collect(ctx, project.clips);
+        }
+
+        Encoder encoder = new Encoder(outFile, mixer, passthrough, total);
+        encoder.start();
+        try {
+            renderFrames(ctx, project.clips, new FrameSink() {
+                @Override
+                public boolean onFrame(Bitmap composed, long ptsUs) {
+                    return encoder.feed(composed, ptsUs);
+                }
+            }, listener);
+        } finally {
+            encoder.finish();
+        }
+
+        if (!outFile.exists() || outFile.length() < 1024) {
+            throw new IOException("could not write the video file");
+        }
+        if (listener != null) {
+            listener.onProgress(100);
+        }
+    }
+
+    /** First decoded frame of a video, used for the preview picture and the thumbnails. */
     public static Bitmap firstFrame(Context ctx, Clip clip) {
         VideoReader reader = null;
         try {
             reader = new VideoReader(ctx, clip);
-            Bitmap b = reader.frameAt(0);
+            Bitmap b = reader.frameAt(clip.startMs * 1000L + 10000L);
             return b == null ? null : b.copy(Bitmap.Config.ARGB_8888, false);
-        } catch (Exception e) {
+        } catch (Throwable t) {
             return null;
         } finally {
             if (reader != null) {
@@ -135,115 +229,27 @@ public final class VideoExporter {
         }
     }
 
-    /* -------------------------------------------------------------- audio pass */
-
-    private static final class Sample {
-        final long ptsUs;
-        final byte[] data;
-        final int flags;
-
-        Sample(long ptsUs, byte[] data, int flags) {
-            this.ptsUs = ptsUs;
-            this.data = data;
-            this.flags = flags;
-        }
-    }
-
-    /**
-     * Copies the already-compressed sound of every video clip into the output timeline.
-     * Only clips matching the first audio format are used (an MP4 has one audio track).
-     */
-    private static MediaFormat collectAudio(Context ctx, List<Clip> clips, List<Sample> out) {
-        MediaFormat chosen = null;
-        long offsetUs = 0;
-        for (Clip c : clips) {
-            long clipUs = Math.max(200, c.durationMs) * 1000L;
-            if (c.kind == Clip.VIDEO && out.size() < 300000) {
-                MediaExtractor ex = new MediaExtractor();
-                try {
-                    ex.setDataSource(ctx, c.uri, null);
-                    int track = -1;
-                    MediaFormat fmt = null;
-                    for (int i = 0; i < ex.getTrackCount(); i++) {
-                        MediaFormat f = ex.getTrackFormat(i);
-                        String mime = f.getString(MediaFormat.KEY_MIME);
-                        if (mime != null && mime.startsWith("audio/")) {
-                            track = i;
-                            fmt = f;
-                            break;
-                        }
-                    }
-                    if (track >= 0 && fmt != null && (chosen == null || sameAudio(chosen, fmt))) {
-                        if (chosen == null) {
-                            chosen = fmt;
-                        }
-                        ex.selectTrack(track);
-                        ByteBuffer buf = ByteBuffer.allocateDirect(512 * 1024);
-                        long firstPts = -1;
-                        while (true) {
-                            int size = ex.readSampleData(buf, 0);
-                            if (size < 0) {
-                                break;
-                            }
-                            long pts = ex.getSampleTime();
-                            if (firstPts < 0) {
-                                firstPts = pts;
-                            }
-                            long rel = pts - firstPts;
-                            if (rel > clipUs) {
-                                break;
-                            }
-                            byte[] data = new byte[size];
-                            buf.position(0);
-                            buf.get(data, 0, size);
-                            int flags = ex.getSampleFlags() & MediaCodec.BUFFER_FLAG_KEY_FRAME;
-                            out.add(new Sample(offsetUs + Math.max(0, rel), data,
-                                    flags == 0 ? MediaCodec.BUFFER_FLAG_KEY_FRAME : flags));
-                            ex.advance();
-                        }
-                    }
-                } catch (Exception ignored) {
-                    // clip has no usable sound — movie just stays silent for this clip
-                } finally {
-                    ex.release();
-                }
-            }
-            offsetUs += clipUs;
-        }
-        return out.isEmpty() ? null : chosen;
-    }
-
-    private static boolean sameAudio(MediaFormat a, MediaFormat b) {
-        try {
-            return a.getString(MediaFormat.KEY_MIME).equals(b.getString(MediaFormat.KEY_MIME))
-                    && a.getInteger(MediaFormat.KEY_SAMPLE_RATE) == b.getInteger(MediaFormat.KEY_SAMPLE_RATE)
-                    && a.getInteger(MediaFormat.KEY_CHANNEL_COUNT) == b.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
     /* ----------------------------------------------------------------- encoder */
 
     private static final class Encoder {
         private final File outFile;
-        private final MediaFormat audioFormat;
-        private final ArrayList<Sample> audio;
+        private final AudioMixer mixer;
+        private final PassthroughAudio passthrough;
+        private final long totalUs;
 
         private MediaCodec codec;
         private MediaMuxer muxer;
         private int videoTrack = -1;
         private int audioTrack = -1;
-        private boolean muxStarted;
-        private int audioIndex;
+        private boolean started;
         private long lastPtsUs;
         private final MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
-        private final int[] row = new int[W];
 
-        Encoder(File outFile, MediaFormat audioFormat, ArrayList<Sample> audio) {
+        Encoder(File outFile, AudioMixer mixer, PassthroughAudio passthrough, long totalUs) {
             this.outFile = outFile;
-            this.audioFormat = audioFormat;
-            this.audio = audio;
+            this.mixer = mixer;
+            this.passthrough = passthrough;
+            this.totalUs = totalUs;
         }
 
         void start() throws IOException {
@@ -261,7 +267,7 @@ public final class VideoExporter {
                     MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
         }
 
-        void feed(Bitmap bitmap, long ptsUs) {
+        boolean feed(Bitmap bitmap, long ptsUs) {
             int guard = 0;
             while (guard++ < 400) {
                 int inIndex = codec.dequeueInputBuffer(10000);
@@ -271,15 +277,16 @@ public final class VideoExporter {
                         if (img != null) {
                             fillYuv(img, bitmap);
                         }
-                    } catch (Exception ignored) {
+                    } catch (Throwable ignored) {
                     }
                     codec.queueInputBuffer(inIndex, 0, W * H * 3 / 2, ptsUs, 0);
                     lastPtsUs = ptsUs;
                     drain(false);
-                    return;
+                    return true;
                 }
                 drain(false);
             }
+            return true;
         }
 
         void drain(boolean endOfStream) {
@@ -293,16 +300,29 @@ public final class VideoExporter {
                 } else if (outIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
                     onFormat(codec.getOutputFormat());
                 } else if (outIndex >= 0) {
-                    if (info.size > 0 && muxStarted && videoTrack >= 0) {
+                    boolean eos = (info.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0;
+                    long pts = info.presentationTimeUs;
+                    int size = info.size;
+                    int offset = info.offset;
+                    if (size > 0 && started) {
                         ByteBuffer bb = codec.getOutputBuffer(outIndex);
                         if (bb != null) {
-                            bb.position(info.offset);
-                            bb.limit(info.offset + info.size);
-                            muxer.writeSampleData(videoTrack, bb, info);
+                            bb.position(offset);
+                            bb.limit(offset + size);
+                            try {
+                                muxer.writeSampleData(videoTrack, bb, info);
+                            } catch (Exception ignored) {
+                            }
                         }
-                        writeAudioUpTo(info.presentationTimeUs);
+                        if (mixer != null) {
+                            try {
+                                mixer.writeUntil(pts);
+                            } catch (Throwable ignored) {
+                            }
+                        } else if (passthrough != null) {
+                            passthrough.writeUntil(this, pts);
+                        }
                     }
-                    boolean eos = (info.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0;
                     codec.releaseOutputBuffer(outIndex, false);
                     if (eos) {
                         return;
@@ -315,30 +335,54 @@ public final class VideoExporter {
 
         private void onFormat(MediaFormat videoFormat) {
             videoTrack = muxer.addTrack(videoFormat);
-            if (audioFormat != null) {
+            if (mixer != null) {
                 try {
-                    audioTrack = muxer.addTrack(audioFormat);
-                } catch (Exception e) {
+                    audioTrack = muxer.addTrack(mixer.format());
+                } catch (Throwable t) {
+                    audioTrack = -1;
+                }
+            } else if (passthrough != null && passthrough.format != null) {
+                try {
+                    audioTrack = muxer.addTrack(passthrough.format);
+                } catch (Throwable t) {
                     audioTrack = -1;
                 }
             }
             muxer.start();
-            muxStarted = true;
+            started = true;
+            if (mixer != null) {
+                if (audioTrack >= 0) {
+                    mixer.setSink(new AudioMixer.PacketSink() {
+                        @Override
+                        public void onAudioPacket(byte[] data, long ptsUs, int flags) {
+                            writeAudio(data, ptsUs, flags);
+                        }
+                    });
+                } else {
+                    mixer.setSink(null);
+                }
+            }
         }
 
-        private void writeAudioUpTo(long ptsUs) {
-            if (!muxStarted || audioTrack < 0) {
+        void writeRaw(ByteBuffer data, MediaCodec.BufferInfo bufferInfo) {
+            if (!started || audioTrack < 0) {
                 return;
             }
-            while (audioIndex < audio.size()) {
-                Sample s = audio.get(audioIndex);
-                if (s.ptsUs > ptsUs) {
-                    return;
-                }
-                ByteBuffer bb = ByteBuffer.wrap(s.data);
-                info.set(0, s.data.length, s.ptsUs, s.flags);
-                muxer.writeSampleData(audioTrack, bb, info);
-                audioIndex++;
+            try {
+                muxer.writeSampleData(audioTrack, data, bufferInfo);
+            } catch (Exception ignored) {
+            }
+        }
+
+        private void writeAudio(byte[] data, long ptsUs, int flags) {
+            if (!started || audioTrack < 0) {
+                return;
+            }
+            MediaCodec.BufferInfo bi = new MediaCodec.BufferInfo();
+            bi.set(0, data.length, ptsUs, flags & MediaCodec.BUFFER_FLAG_KEY_FRAME);
+            try {
+                muxer.writeSampleData(audioTrack, ByteBuffer.wrap(data), bi);
+            } catch (Exception ignored) {
             }
         }
 
@@ -350,8 +394,15 @@ public final class VideoExporter {
                             MediaCodec.BUFFER_FLAG_END_OF_STREAM);
                 }
                 drain(true);
-                writeAudioUpTo(Long.MAX_VALUE);
             } catch (Exception ignored) {
+            }
+            if (mixer != null) {
+                try {
+                    mixer.finish(totalUs);
+                } catch (Throwable ignored) {
+                }
+            } else if (passthrough != null) {
+                passthrough.writeRest(this);
             }
             try {
                 codec.stop();
@@ -361,7 +412,7 @@ public final class VideoExporter {
                 codec.release();
             } catch (Exception ignored) {
             }
-            if (muxStarted) {
+            if (started) {
                 try {
                     muxer.stop();
                 } catch (Exception ignored) {
@@ -373,7 +424,7 @@ public final class VideoExporter {
             }
         }
 
-        /** ARGB bitmap -> the encoder's YUV planes (handles both planar and semi-planar layouts). */
+        /** ARGB bitmap -> the encoder's YUV planes (planar and semi-planar both handled). */
         private void fillYuv(Image image, Bitmap bitmap) {
             Image.Plane[] planes = image.getPlanes();
             ByteBuffer yBuf = planes[0].getBuffer();
@@ -386,6 +437,7 @@ public final class VideoExporter {
             int vRow = planes[2].getRowStride();
             int vPixel = planes[2].getPixelStride();
 
+            int[] row = new int[W];
             for (int y = 0; y < H; y++) {
                 bitmap.getPixels(row, 0, W, 0, y, W, 1);
                 int yOffset = y * yRow;
@@ -423,14 +475,120 @@ public final class VideoExporter {
         }
     }
 
+    /* ------------------------------------------------- audio fallback (passthru) */
+
+    /** Used when the mixer is unavailable: copies the compressed sound of the clips. */
+    private static final class PassthroughAudio {
+        MediaFormat format;
+        final ArrayList<long[]> meta = new ArrayList<>();
+        final ArrayList<byte[]> data = new ArrayList<>();
+        int index;
+
+        static PassthroughAudio collect(Context ctx, List<Clip> clips) {
+            try {
+                PassthroughAudio p = new PassthroughAudio();
+                long offsetUs = 0;
+                for (Clip c : clips) {
+                    long clipUs = Math.max(200, c.durationMs) * 1000L;
+                    if (c.isVideo()) {
+                        p.collectClip(ctx, c, offsetUs);
+                    }
+                    offsetUs += clipUs;
+                }
+                return p.data.isEmpty() ? null : p;
+            } catch (Throwable t) {
+                return null;
+            }
+        }
+
+        private void collectClip(Context ctx, Clip clip, long offsetUs) {
+            MediaExtractor ex = new MediaExtractor();
+            try {
+                ex.setDataSource(ctx, clip.uri, null);
+                int track = -1;
+                MediaFormat fmt = null;
+                for (int i = 0; i < ex.getTrackCount(); i++) {
+                    MediaFormat f = ex.getTrackFormat(i);
+                    String mime = f.getString(MediaFormat.KEY_MIME);
+                    if (mime != null && mime.startsWith("audio/")) {
+                        track = i;
+                        fmt = f;
+                        break;
+                    }
+                }
+                if (track < 0 || fmt == null) {
+                    return;
+                }
+                if (format == null) {
+                    format = fmt;
+                } else if (!format.getString(MediaFormat.KEY_MIME)
+                        .equals(fmt.getString(MediaFormat.KEY_MIME))) {
+                    return;
+                }
+                ex.selectTrack(track);
+                if (clip.startMs > 50) {
+                    ex.seekTo(clip.startMs * 1000L, MediaExtractor.SEEK_TO_CLOSEST_SYNC);
+                }
+                ByteBuffer buf = ByteBuffer.allocateDirect(512 * 1024);
+                long firstPts = -1;
+                long endUs = offsetUs + Math.max(200, clip.durationMs) * 1000L;
+                while (data.size() < 300000) {
+                    int size = ex.readSampleData(buf, 0);
+                    if (size < 0) {
+                        break;
+                    }
+                    long pts = ex.getSampleTime();
+                    if (firstPts < 0) {
+                        firstPts = pts;
+                    }
+                    long outPts = offsetUs + (pts - firstPts);
+                    if (outPts > endUs) {
+                        break;
+                    }
+                    byte[] bytes = new byte[size];
+                    buf.position(0);
+                    buf.get(bytes, 0, size);
+                    data.add(bytes);
+                    meta.add(new long[]{outPts, ex.getSampleFlags()});
+                    ex.advance();
+                }
+            } catch (Exception ignored) {
+            } finally {
+                ex.release();
+            }
+        }
+
+        void writeUntil(Encoder encoder, long ptsUs) {
+            while (index < data.size() && meta.get(index)[0] <= ptsUs) {
+                long[] m = meta.get(index);
+                MediaCodec.BufferInfo bi = new MediaCodec.BufferInfo();
+                bi.set(0, data.get(index).length, m[0],
+                        (int) m[1] & MediaCodec.BUFFER_FLAG_KEY_FRAME);
+                encoder.writeRaw(ByteBuffer.wrap(data.get(index)), bi);
+                index++;
+            }
+        }
+
+        void writeRest(Encoder encoder) {
+            while (index < data.size()) {
+                long[] m = meta.get(index);
+                MediaCodec.BufferInfo bi = new MediaCodec.BufferInfo();
+                bi.set(0, data.get(index).length, m[0],
+                        (int) m[1] & MediaCodec.BUFFER_FLAG_KEY_FRAME);
+                encoder.writeRaw(ByteBuffer.wrap(data.get(index)), bi);
+                index++;
+            }
+        }
+    }
+
     /* ----------------------------------------------------------------- decoder */
 
     /** Reads a video file frame by frame, in order, as ARGB bitmaps. */
     public static final class VideoReader {
         final Clip clip;
 
-        private MediaExtractor extractor;
-        private MediaCodec decoder;
+        private final MediaExtractor extractor;
+        private final MediaCodec decoder;
         private boolean eos;
         private boolean inputDone;
 
@@ -441,11 +599,10 @@ public final class VideoExporter {
         private long nextPts;
         private final MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
         private int[] pixels = new int[0];
-        private final int maxSide;
+        private static final int MAX_SIDE = 960;
 
         public VideoReader(Context ctx, Clip clip) throws IOException {
             this.clip = clip;
-            this.maxSide = 960;
             extractor = new MediaExtractor();
             extractor.setDataSource(ctx, clip.uri, null);
 
@@ -461,6 +618,7 @@ public final class VideoExporter {
                 }
             }
             if (track < 0 || fmt == null) {
+                extractor.release();
                 throw new IOException("no video track");
             }
             extractor.selectTrack(track);
@@ -473,13 +631,17 @@ public final class VideoExporter {
             }
             decoder.configure(fmt, null, null, 0);
             decoder.start();
-            extractor.seekTo(0, MediaExtractor.SEEK_TO_CLOSEST_SYNC);
+            if (clip.startMs > 50) {
+                extractor.seekTo(clip.startMs * 1000L, MediaExtractor.SEEK_TO_CLOSEST_SYNC);
+            } else {
+                extractor.seekTo(0, MediaExtractor.SEEK_TO_CLOSEST_SYNC);
+            }
         }
 
-        /** Frame that should be visible {@code localUs} microseconds into the clip. */
-        public Bitmap frameAt(long localUs) {
+        /** Frame that should be visible at the given absolute source timestamp (µs). */
+        public Bitmap frameAt(long sourceUs) {
             int guard = 0;
-            while (guard++ < 4000) {
+            while (guard++ < 8000) {
                 if (!haveNext) {
                     if (!produceNext()) {
                         break;
@@ -488,7 +650,7 @@ public final class VideoExporter {
                 if (!haveNext) {
                     break;
                 }
-                if (nextPts > localUs) {
+                if (nextPts > sourceUs) {
                     break;
                 }
                 Bitmap swap = current;
@@ -502,12 +664,12 @@ public final class VideoExporter {
 
         private boolean produceNext() {
             int guard = 0;
-            while (!eos && guard++ < 200) {
+            while (!eos && guard++ < 300) {
                 if (!inputDone) {
                     int inIndex = decoder.dequeueInputBuffer(10000);
                     if (inIndex >= 0) {
                         ByteBuffer buffer = decoder.getInputBuffer(inIndex);
-                        int size = extractor.readSampleData(buffer, 0);
+                        int size = buffer == null ? -1 : extractor.readSampleData(buffer, 0);
                         if (size < 0) {
                             decoder.queueInputBuffer(inIndex, 0, 0, 0,
                                     MediaCodec.BUFFER_FLAG_END_OF_STREAM);
@@ -525,10 +687,10 @@ public final class VideoExporter {
                     Image image = null;
                     try {
                         image = decoder.getOutputImage(outIndex);
-                    } catch (Exception ignored) {
+                    } catch (Throwable ignored) {
                     }
                     if (image != null && info.size > 0) {
-                        Bitmap target = nextFrameBitmap(image.getWidth(), image.getHeight());
+                        Bitmap target = nextBitmap(image.getWidth(), image.getHeight());
                         yuvToBitmap(image, target);
                         next = target;
                         nextPts = info.presentationTimeUs;
@@ -542,18 +704,16 @@ public final class VideoExporter {
                     if (haveNext) {
                         return true;
                     }
-                } else if (outIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                    // output size may be known only now; nothing to do, images carry it
                 }
             }
             return haveNext;
         }
 
-        private Bitmap nextFrameBitmap(int srcW, int srcH) {
+        private Bitmap nextBitmap(int srcW, int srcH) {
             float scale = 1f;
             int longest = Math.max(srcW, srcH);
-            if (longest > maxSide) {
-                scale = (float) maxSide / longest;
+            if (longest > MAX_SIDE) {
+                scale = (float) MAX_SIDE / longest;
             }
             int w = Math.max(2, Math.round(srcW * scale));
             int h = Math.max(2, Math.round(srcH * scale));
@@ -566,7 +726,7 @@ public final class VideoExporter {
             return next;
         }
 
-        /** YUV_420_888 -> ARGB, with nearest-neighbour scaling down to save memory. */
+        /** YUV_420_888 -> ARGB, scaled down to keep memory low on cheap phones. */
         private void yuvToBitmap(Image image, Bitmap out) {
             Image.Plane[] planes = image.getPlanes();
             ByteBuffer yBuf = planes[0].getBuffer();
@@ -616,22 +776,16 @@ public final class VideoExporter {
 
         public void release() {
             try {
-                if (decoder != null) {
-                    decoder.stop();
-                }
-            } catch (Exception ignored) {
+                decoder.stop();
+            } catch (Throwable ignored) {
             }
             try {
-                if (decoder != null) {
-                    decoder.release();
-                }
-            } catch (Exception ignored) {
+                decoder.release();
+            } catch (Throwable ignored) {
             }
             try {
-                if (extractor != null) {
-                    extractor.release();
-                }
-            } catch (Exception ignored) {
+                extractor.release();
+            } catch (Throwable ignored) {
             }
             if (current != null && !current.isRecycled()) {
                 current.recycle();
