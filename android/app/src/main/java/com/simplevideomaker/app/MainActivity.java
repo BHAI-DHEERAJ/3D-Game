@@ -132,13 +132,12 @@ public class MainActivity extends Activity {
             }));
             seat = new FrameLayout(this);
             LinearLayout.LayoutParams seatLp = new LinearLayout.LayoutParams(MATCH, 0, 1f);
-            seat.setPadding(dp(10), dp(10), dp(10), 0);
+            seat.setPadding(dp(8), dp(8), dp(8), 0);
             root.addView(seat, seatLp);
             emptyPanel = buildEmptyPanel();
             editorPanel = buildEditorPanel();
             seat.addView(emptyPanel, new FrameLayout.LayoutParams(MATCH, MATCH));
             seat.addView(editorPanel, new FrameLayout.LayoutParams(MATCH, MATCH));
-            root.addView(buildEditorBar());
         }
         setContentView(root);
         refresh();
@@ -190,6 +189,31 @@ public class MainActivity extends Activity {
         if (back != null) {
             nameLabel.setClickable(true);
             nameLabel.setOnClickListener(v -> renameProject());
+        }
+
+        if (back != null) {
+            TextView playBtn = new TextView(this);
+            playBtn.setText("▶️");
+            playBtn.setTextSize(16f);
+            playBtn.setGravity(Gravity.CENTER);
+            playBtn.setPadding(dp(10), dp(4), dp(10), dp(4));
+            playBtn.setClickable(true);
+            playBtn.setOnClickListener(v -> previewVideo());
+            bar.addView(playBtn);
+
+            TextView makeBtn = new TextView(this);
+            makeBtn.setText(t("🎉 Make", "🎉 बनाएं"));
+            makeBtn.setTextColor(Color.WHITE);
+            makeBtn.setTextSize(14f);
+            makeBtn.setTypeface(Typeface.DEFAULT_BOLD);
+            makeBtn.setGravity(Gravity.CENTER);
+            makeBtn.setBackground(round(0xFF1E7A3C, 16, 0));
+            makeBtn.setPadding(dp(14), dp(8), dp(14), dp(8));
+            makeBtn.setClickable(true);
+            makeBtn.setOnClickListener(v -> makeVideo());
+            LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(WRAP, WRAP);
+            mlp.setMargins(dp(6), 0, dp(4), 0);
+            bar.addView(makeBtn, mlp);
         }
 
         if (back == null) {
@@ -562,7 +586,7 @@ public class MainActivity extends Activity {
         previewBox.addView(overlayTools, otLp);
 
         mid.addView(previewBox, new LinearLayout.LayoutParams(0, MATCH, 1f));
-        mid.addView(buildToolsColumn(), new LinearLayout.LayoutParams(dp(170), MATCH));
+        mid.addView(buildToolsColumn(), new LinearLayout.LayoutParams(dp(152), MATCH));
         panel.addView(mid, new LinearLayout.LayoutParams(MATCH, 0, 1f));
 
         // ---------- timeline
@@ -601,7 +625,7 @@ public class MainActivity extends Activity {
                 renderAt(timeMs);
             }
         });
-        panel.addView(timeline, new LinearLayout.LayoutParams(MATCH, dp(94)));
+        panel.addView(timeline, new LinearLayout.LayoutParams(MATCH, dp(86)));
         return panel;
     }
 
@@ -610,26 +634,24 @@ public class MainActivity extends Activity {
         scroll.setVerticalScrollBarEnabled(false);
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
-        col.setPadding(dp(5), 0, 0, 0);
+        col.setPadding(dp(5), 0, 0, dp(6));
 
-        addToolRow(col, tool("🔤", t("Text", "लिखें"), false, v -> addText()),
-                tool("😊", t("Sticker", "स्टिकर"), false, v -> addSticker()));
-        addToolRow(col, tool("🎵", t("Music", "संगीत"), false, v -> audioDialog()),
-                tool("✨", t("Effect", "इफ़ेक्ट"), false, v -> transitionDialog()));
-        addToolRow(col, tool("🎨", t("Look", "रंग"), false, v -> filterDialog()),
-                tool("📐", t("Size", "साइज़"), false, v -> videoSizeDialog()));
-        addToolRow(col, tool("⏩", t("Speed", "गति"), false, v -> speedDialog()),
-                tool("✂️", t("Split", "काटें"), false, v -> splitAtPlayhead()));
+        addToolRow(col, tool("➕", t("Media", "मीडिया"), false, v -> pickMedia()),
+                tool("🔤", t("Text", "लिखें"), false, v -> addText()));
+        addToolRow(col, tool("😊", t("Sticker", "स्टिकर"), false, v -> addSticker()),
+                tool("🎵", t("Music", "संगीत"), false, v -> audioDialog()));
+        addToolRow(col, tool("✨", t("Effect", "इफ़ेक्ट"), false, v -> transitionDialog()),
+                tool("🎨", t("Look", "रंग"), false, v -> filterDialog()));
+        addToolRow(col, tool("📐", t("Size", "साइज़"), false, v -> videoSizeDialog()),
+                tool("⏩", t("Speed", "गति"), false, v -> speedDialog()));
         speedLabel = tool("⏱️", "3s", false, v -> changeDuration());
-        addToolRow(col, speedLabel, tool("🔀", t("Copy", "कॉपी"), false, v -> duplicateClip()));
-        addToolRow(col, tool("🔊", t("Sound", "आवाज़"), false, v -> audioDialog()),
-                tool("⬅️", t("Left", "पीछे"), false, v -> move(-1)));
-        addToolRow(col, tool("➡️", t("Right", "आगे"), false, v -> move(1)),
-                tool("🗑️", t("Remove", "हटाएं"), true, v -> removeClip()));
-        addToolRow(col, tool("💾", t("Save", "सेव"), false, v -> {
-            saveCurrent();
-            toast(t("Draft saved ✔️", "ड्राफ्ट सेव हो गया ✔️"));
-        }), tool("❓", t("Help", "मदद"), false, v -> helpDialog()));
+        addToolRow(col, tool("✂️", t("Split", "काटें"), false, v -> splitAtPlayhead()), speedLabel);
+        addToolRow(col, tool("🔀", t("Copy", "कॉपी"), false, v -> duplicateClip()),
+                tool("🔊", t("Sound", "आवाज़"), false, v -> audioDialog()));
+        addToolRow(col, tool("⬅️", t("Left", "पीछे"), false, v -> move(-1)),
+                tool("➡️", t("Right", "आगे"), false, v -> move(1)));
+        addToolRow(col, tool("🗑️", t("Remove", "हटाएं"), true, v -> removeClip()),
+                tool("❓", t("Help", "मदद"), false, v -> helpDialog()));
 
         scroll.addView(col);
         return scroll;
@@ -722,32 +744,6 @@ public class MainActivity extends Activity {
         lp.setMargins(dp(2), dp(2), dp(2), dp(2));
         tv.setLayoutParams(lp);
         return tv;
-    }
-
-    private View buildEditorBar() {
-        LinearLayout bar = new LinearLayout(this);
-        bar.setOrientation(LinearLayout.HORIZONTAL);
-        bar.setPadding(dp(8), dp(8), dp(8), dp(14));
-        bar.setBackgroundColor(BG);
-
-        TextView add = bigButton(t("➕", "➕"), CARD, INK);
-        add.setOnClickListener(v -> pickMedia());
-        bar.addView(add, weighted(0.7f));
-
-        TextView play = bigButton(t("▶️  Preview", "▶️  देखें"), CARD, INK);
-        play.setOnClickListener(v -> previewVideo());
-        bar.addView(play, weighted(1.15f));
-
-        TextView make = bigButton(t("🎉  Make Video", "🎉  वीडियो बनाएं"), ACCENT, Color.WHITE);
-        make.setOnClickListener(v -> makeVideo());
-        bar.addView(make, weighted(1.25f));
-        return bar;
-    }
-
-    private LinearLayout.LayoutParams weighted(float weight) {
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(62), weight);
-        lp.setMargins(dp(3), 0, dp(3), 0);
-        return lp;
     }
 
     /* --------------------------------------------------------------- helpers */
